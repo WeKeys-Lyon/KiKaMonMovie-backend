@@ -1,7 +1,8 @@
 var express = require('express');
 var router = express.Router();
 const TMDB_BEARER = process.env.TMDB_BEARER;
-
+require('../models/connection');
+const User = require('../models/users');
 
 const base_API = `https://api.themoviedb.org/`
 const options_get = {
