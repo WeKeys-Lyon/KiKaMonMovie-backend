@@ -2,6 +2,8 @@ var express = require('express');
 var router = express.Router();
 require('../models/connection');
 const User = require('../models/users');
+const Physical_format = require('../models/physical');
+const Movie = require('../models/movies');
 const bcrypt = require('bcrypt');
 const uid2 = require('uid2');
 
