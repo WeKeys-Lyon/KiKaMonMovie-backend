@@ -4,11 +4,12 @@ require('../models/connection');
 const User = require('../models/users');
 const bcrypt = require('bcrypt');
 const uid2 = require('uid2');
+const { checkbody, checkUsername } = require('../modules/checkBody');
+
 
 // inscription d'un nouvel utilisateur
 router.post('/signup', async (req, res) => {
-    const {username, password, email} = req.body;
-   if (!username || !password || !email) {
+   if (!checkbody(req.body, ['username', 'password', 'email'])) {
     res.status(400).send({result: false, answer : 'Missing parameters'});
     return;
   }
@@ -31,8 +32,7 @@ router.post('/signup', async (req, res) => {
 
 //connexion d'un utilisateur déjà inscrit
 router.post('/signin', async (req, res) => {
-    const {username, password, email} = req.body;
-    if (!username || !password) {
+    if (!checkbody(req.body, ['username', 'password'])) {
         res.status(400).send({result: false, answer : 'Missing parameters'});
         return;
     }
