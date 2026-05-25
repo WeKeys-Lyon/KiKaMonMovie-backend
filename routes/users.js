@@ -1,19 +1,9 @@
 var express = require('express');
 var router = express.Router();
-const TMDB_BEARER = process.env.TMDB_BEARER;
 require('../models/connection');
 const User = require('../models/users');
 const bcrypt = require('bcrypt');
 const uid2 = require('uid2');
-
-const base_API = `https://api.themoviedb.org/`
-const options_get = {
-  method: 'GET',
-  headers: {
-    accept: 'application/json',
-    Authorization: `Bearer ${TMDB_BEARER}`
-  }
-};
 
 // inscription d'un nouvel utilisateur
 router.post('/signup', async (req, res) => {
