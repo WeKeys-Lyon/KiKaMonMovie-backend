@@ -14,7 +14,7 @@ const options_get = {
 };
 
 router.get('/search/:title', async (req, res) => {
-    //Faire un appel à Mongoose pour enregistrer dans un Array la liste des tmdb_id présents dans la collection.
+    //TODO -> Faire un appel à Mongoose pour enregistrer dans un Array la liste des tmdb_id présents dans la collection.
 
     const myUrl = `${base_API}3/search/movie?query=${req.params.title}`;
 
@@ -29,6 +29,7 @@ router.get('/search/:title', async (req, res) => {
         if (data.results[i]) {
             // Si le data.results[i].id match avec le tmdb_id, alors on skip les appels API pour prendre les données Mongoose.
             // https://api.themoviedb.org/3/movie/{movie_id} Avoir plus d'infos sur le film
+            // https://developer.themoviedb.org/docs/append-to-response pour appeler en un coup credits et translations
             // https://api.themoviedb.org/3/movie/{movie_id}/credits Avoir le casting devant et derrière la caméra
             // https://api.themoviedb.org/3/movie/{movie_id}/translations avoir le titre en français
             // Faire trois appels 10 fois pour obtenir un affichage correct des résultats sur la page suivante
