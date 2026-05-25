@@ -6,7 +6,7 @@ const userSchema = new mongoose.Schema({
   email: {type: String, required: true, unique: true},
   token: {type: String, required: true, unique: true},
   friends: [{ 
-            userid: {type: mongoose.Schema.Types.ObjectId, ref:'friends'}, 
+            userid: {type: mongoose.Schema.Types.ObjectId, ref:'users'}, 
             canSeeMyCollection: {type: Boolean, required: true}, 
             canAskForMovies: {type: Boolean, required: true} 
         }],
@@ -16,7 +16,12 @@ const userSchema = new mongoose.Schema({
             review: {type: String, required: false},
             isLoaned: {type: Boolean, required: true},
             physical_format: [{type: mongoose.Schema.Types.ObjectId, ref:'physical'}],
-            pastLoans: [{type: mongoose.Schema.Types.ObjectId, ref:'loans'}],
+            pastLoans: [{
+              movieid: {type: mongoose.Schema.Types.ObjectId, ref:'movies'},
+              isSharedToUser: {type: String, required: true},
+              userid: {type: mongoose.Schema.Types.ObjectId, ref:'users'},
+              borrower: {type: String, required: false}
+            }],
             isAsked: [{type: mongoose.Schema.Types.ObjectId, ref:'users'}]
 
   }],
