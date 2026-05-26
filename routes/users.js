@@ -6,12 +6,12 @@ const Physical_format = require('../models/physical');
 const Movie = require('../models/movies');
 const bcrypt = require('bcrypt');
 const uid2 = require('uid2');
-const { checkbody, checkUsername } = require('../modules/checkBody');
+const { checkBody, checkUsername, checkEmail, checkPassword} = require('../modules/checkBody');
 
 
 // inscription d'un nouvel utilisateur
 router.post('/signup', async (req, res) => {
-   if (!checkbody(req.body, ['username', 'password', 'email'])) {
+   if (!checkBody(req.body, ['username', 'password', 'email'])) {
     res.status(400).send({result: false, answer : 'Missing parameters'});
     return;
   }
