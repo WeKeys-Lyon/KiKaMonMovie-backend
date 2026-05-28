@@ -16,7 +16,7 @@ function makeACard(api_data) {
     let cleanComposers = [];
     getComposers.forEach(element => { cleanComposers.push({
     name: element.name,
-    tmdb_director_id: element.id
+    tmdb_composer_id: element.id
     })});
     // Obtenir la liste du casting
     let cleanCast = []

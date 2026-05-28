@@ -10,7 +10,7 @@ const movieSchema = mongoose.Schema({
         directorid: {type: mongoose.Schema.Types.ObjectId, ref:'directors'},
     }],
     Cast: [{
-        actorid: {type: mongoose.Schema.Types.ObjectId, ref:'actors'},
+        actorid: {type: mongoose.Schema.Types.ObjectId, ref:'cast'},
     }],
     Genres: [{
         genreid: {type: mongoose.Schema.Types.ObjectId, ref:'genres'},
