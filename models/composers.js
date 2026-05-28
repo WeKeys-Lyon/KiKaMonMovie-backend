@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const composersSchema = new mongoose.Schema({
     name : {type: String, required: true, unique: false},
-    tmbdb_composer_id: {type: Number, required: true, unique: true}
+    tmdb_composer_id: {type: Number, required: true, unique: true}
 });
 
 const Composers = mongoose.model('composers', composersSchema);

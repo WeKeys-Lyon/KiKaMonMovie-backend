@@ -24,6 +24,13 @@ function makeACard(api_data) {
     name: element.name,
     tmdb_actor_id: element.id
     })});
+    // Obtenir la liste des Genres
+    let cleanGenres = [];
+    api_data.genres.forEach(element => { cleanGenres.push({
+        name: element.name,
+        tmdb_genre_id: element.id
+    })    
+    })
     return ({
         tmdb_id: api_data.id,
         original_title: api_data.original_title,
@@ -32,7 +39,8 @@ function makeACard(api_data) {
         poster_path: api_data.poster_path,
         DirectedBy: cleanDirectors,
         Cast: cleanCast,
-        MusicBy: cleanComposers
+        MusicBy: cleanComposers,
+        genre: cleanGenres
     })
 }
 module.exports = { makeACard };
