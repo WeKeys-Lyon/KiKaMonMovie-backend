@@ -4,6 +4,10 @@ require('../models/connection');
 const User = require('../models/users');
 const Physical_format = require('../models/physical');
 const Movie = require('../models/movies');
+const Cast = require('../models/cast');
+const Director = require('../models/directors');
+const Genre = require('../models/genres');
+const Composer = require('../models/composers');
 const bcrypt = require('bcrypt');
 const uid2 = require('uid2');
 const { checkBody, checkUsername, checkEmail, checkPassword} = require('../modules/checkBody');
@@ -57,6 +61,103 @@ router.post('/signin', async (req, res) => {
         (username) ? res.status(200).send({result: true, answer: { username: username.username, email: username.email, token: username.token }}) : res.status(200).send({result: true, answer: { username: email.username, email: email.email, token: email.token }})
     }
     
+});
+
+//ajouter un film
+router.post('/add-movie', async (req, res) => {
+  try {     
+    const { token, movie } = req.body;
+
+    // 1. Trouver l'utilisateur
+    const user = await User.findOne({ token: token });
+    if (!user) {
+      return res.json({ result: false, error: 'Utilisateur introuvable' });
+    }
+
+    // 2. Vérifier si le film existe déjà
+    let existingMovie = await Movie.findOne({ tmdb_id: movie.tmdb_id });
+
+    // 3. SI LE FILM N'EXISTE PAS : On peuple tes 4 collections !
+    if (!existingMovie) {
+      
+      // -- GESTION DES RÉALISATEURS (directors.js) --
+      const directorsIds = [];
+      for (const directorData of (movie.DirectedBy || [])) {
+        let director = await Director.findOne({ tmdb_director_id: directorData.tmdb_director_id });
+        if (!director) {
+          director = new Director({ name: directorData.name, tmdb_director_id: directorData.tmdb_director_id });
+          await director.save();
+        }
+        directorsIds.push({ directorid: director._id });
+      }
+
+      // -- GESTION DU CASTING (cast.js) --
+      const actorsIds = [];
+      for (const actorData of (movie.Cast || [])) {
+        let castMember = await Cast.findOne({ tmdb_actor_id: actorData.tmdb_actor_id });
+        if (!castMember) {
+          castMember = new Cast({ name: actorData.name, tmdb_actor_id: actorData.tmdb_actor_id });
+          await castMember.save();
+        }
+        actorsIds.push({ actorid: castMember._id }); 
+      }
+
+      // -- GESTION DES GENRES (genres.js) --
+      const genresIds = [];
+      for (const genreData of (movie.genre || [])) {
+        let genre = await Genre.findOne({ tmdb_genre_id: genreData.tmdb_genre_id });
+        if (!genre) {
+          genre = new Genre({ name: genreData.name, tmdb_genre_id: genreData.tmdb_genre_id });
+          await genre.save();
+        }
+        genresIds.push({ genreid: genre._id });
+      }
+
+      // -- GESTION DES COMPOSITEURS (composers.js) --
+      const composersIds = [];
+      for (const composerData of (movie.MusicBy || [])) {
+        let composer = await Composer.findOne({ tmdb_composer_id: composerData.tmdb_composer_id });
+        if (!composer) {
+          composer = new Composer({ name: composerData.name, tmdb_composer_id: composerData.tmdb_composer_id });
+          await composer.save();
+        }
+        composersIds.push({ composerid: composer._id });
+      }
+
+      // -- CRÉATION DU FILM EN BDD --
+      const newMovie = new Movie({
+        tmdb_id: movie.tmdb_id,
+        original_title: movie.original_title,
+        title_fr: movie.title_fr,
+        release_date: movie.release_date,
+        poster_path: movie.poster_path,
+        DirectedBy: directorsIds,
+        Cast: actorsIds,
+        Genres: genresIds,
+        MusicBy: composersIds
+      });
+
+      existingMovie = await newMovie.save();
+    }
+
+    // 4. Ajouter le film à l'utilisateur
+    const isAlreadyInCollection = user.movies.some(
+      (movieId) => movieId.toString() === existingMovie._id.toString()
+    );
+
+    if (isAlreadyInCollection) {
+      return res.json({ result: false, error: 'Ce film est déjà dans votre collection' });
+    }
+
+    user.movies.push(existingMovie._id);
+    await user.save();
+
+    res.json({ result: true, message: 'Film ajouté avec succès !' });
+
+  } catch (error) {
+    console.error("Erreur critique :", error);
+    res.json({ result: false, error: 'Erreur interne du serveur' });
+  } 
 });
 
 module.exports = router;  
