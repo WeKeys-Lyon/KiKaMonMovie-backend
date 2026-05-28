@@ -33,7 +33,7 @@ router.post('/signup', async (req, res) => {
         token: token
     });
     await newUser.save();
-    res.status(201).send({result: true, answer : {username: newUser.username, email: newUser.email, token: newUser.token}});
+    res.status(201).send({result: true, answer : {username: newUser.username, email: newUser.email, token: newUser.token, movies: newUser.movies || []}});
 }),
 
 //connexion d'un utilisateur déjà inscrit
