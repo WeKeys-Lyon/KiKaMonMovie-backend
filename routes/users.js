@@ -150,7 +150,7 @@ router.post('/add-movie', async (req, res) => {
     }
 
     user.movies.push({
-      movieID: existingMovie._id,
+      movieid: existingMovie._id,
     isLoaned: false
   });
     await user.save();
