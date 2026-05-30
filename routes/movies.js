@@ -17,13 +17,15 @@ const options_get = {
 };
 
 router.get('/search/:title', async (req, res) => {
-    // TODO : Que faire si recherche vide ?
     const myUrl = `${base_API}3/search/movie?query=${req.params.title}`;
 
     const response = await fetch(encodeURI(myUrl), options_get);
     let data = await response.json();
     data.results.sort((a,b) => b.popularity - a.popularity);
-
+    if (!data.total_results) {
+      res.status(200).send({result: false, error: 'Aucun resultat retourné'});
+      return;
+    }
     let myResults = [];
 
     const times = 10;
@@ -46,24 +48,20 @@ router.get('/search/:title', async (req, res) => {
                   name: director.directorid?.name })),
                 Cast: getMyMovieOffline.Cast.map(actor => ({
                   name: actor.actorid?.name })),
-                  Genres: getMyMovieOffline.Genres.map(genre => ({
+                Genres: getMyMovieOffline.Genres.map(genre => ({
                   name: genre.genreid?.name })),
-                  MusicBy: getMyMovieOffline.MusicBy.map(composer => ({
+                MusicBy: getMyMovieOffline.MusicBy.map(composer => ({
                   name: composer.composerid?.name }))
 
               };
-              myResults.push(formattedOfflineMovie);
-            //if (TMDBIds.find(e => e.tmdb_id == data.results[i].id)) {
-            
+              myResults.push(formattedOfflineMovie);            
             } else {
               const moreInfosURL = `${base_API}3/movie/${data.results[i].id}?append_to_response=credits,translations`;
               const newResponse = await fetch(encodeURI(moreInfosURL), options_get);
               let moreInfos = await newResponse.json();
 
               //Mise en forme pour la BDD
-              myResults.push(makeACard(moreInfos))
-              
-              
+              myResults.push(makeACard(moreInfos))              
             }            
         }
     }
