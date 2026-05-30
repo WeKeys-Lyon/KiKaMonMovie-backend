@@ -62,13 +62,48 @@ router.get('/search/:title', async (req, res) => {
               // On exclus tous les films qui ne sont pas sortis (exemple Toy Story 6 - id 1689447)
               if(moreInfos.status == "Released") {
                 //Mise en forme pour la BDD
-                myResults.push(makeACard(moreInfos))   
+                myResults.push(makeACard(moreInfos))
               }
           
             }            
         }
     }
     (myResults) ? res.status(200).send({result: true, answer : myResults}) : res.status(200).send({result: false, error: 'Aucun resultat retourné'})
+    
+});
+
+router.get('/searchpeople/:people', async (req, res) => {
+    const myPersonUrl = `${base_API}3/search/person?query=${req.params.people}`;
+
+    const responsePerson = await fetch(encodeURI(myPersonUrl), options_get);
+    let dataPerson = await responsePerson.json();
+        if (dataPerson.total_results == 0) {
+        res.status(200).send({result: false, error: 'Pas de personnalité trouvé.'});
+        return;
+    }
+    const personID = dataPerson.results[0].id;
+
+    const detailsUrl = `${base_API}3/person/${personID}/movie_credits`;
+    const responseDetails = await fetch(encodeURI(detailsUrl), options_get); 
+    let dataDetails = await responseDetails.json();
+
+    if (dataDetails.crew.length && dataDetails.cast.length) {
+        const map = new Map([...dataDetails.crew, ...dataDetails.cast]
+            .map(obj => [obj.id, obj]));
+        const mergedArray = Array.from(map.values());
+        let results = [];
+        mergedArray.forEach(e => results.push({
+          tmdb_id: e.id,
+          original_title: e.original_title,
+          poster_path: e.poster_path,
+          release_date: e.release_date
+        }))
+    res.status(200).send({result: true, answer: results})
+
+    }
+});
+
+router.get('/searchid/:id', async (req, res) => {
     
 });
 

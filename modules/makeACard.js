@@ -34,7 +34,7 @@ function makeACard(api_data) {
     return ({
         tmdb_id: api_data.id,
         original_title: api_data.original_title,
-        title_fr: (titlefr) ? titlefr : api_data.title_original,
+        title_fr: (titlefr) ? titlefr : api_data.original_title,
         release_date: api_data.release_date,
         poster_path: api_data.poster_path,
         DirectedBy: cleanDirectors,
