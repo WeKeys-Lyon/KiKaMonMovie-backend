@@ -43,7 +43,7 @@ router.post('/signup', async (req, res) => {
 //connexion d'un utilisateur déjà inscrit
 router.post('/signin', async (req, res) => {
     if (!checkBody(req.body, ['mylogin', 'password'])) {
-        res.status(400).send({result: false, answer : 'Missing parameters'});
+        res.status(200).send({result: false, answer : 'Missing parameters'});
         return;
     }
     const username = await User.findOne({username: req.body.mylogin});
@@ -53,12 +53,17 @@ router.post('/signin', async (req, res) => {
         userExists = username;
     } else if (email) {
         userExists = email;
-    };
+    } else {
+      res.status(200).send({result: false, answer : 'Utilisateur ou Email inconnu'});
+      return;
+    }
+   
     if ( !bcrypt.compareSync(req.body.password, userExists.password) ) {
-        res.status(400).send({result: false, answer : 'User not found or wrong password'});
+        res.status(200).send({result: false, answer : 'User not found or wrong password'});
         return;
     } else {
-        (username) ? res.status(200).send({result: true, answer: { username: username.username, email: username.email, token: username.token }}) : res.status(200).send({result: true, answer: { username: email.username, email: email.email, token: email.token }})
+
+        (username) ? res.status(200).send({result: true, answer: { username: username.username, email: username.email, token: username.token, movies: username.movies }}) : res.status(200).send({result: true, answer: { username: email.username, email: email.email, token: email.token, movies: email.movies }})
     }
     
 });
