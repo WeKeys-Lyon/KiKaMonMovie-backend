@@ -149,7 +149,10 @@ router.post('/add-movie', async (req, res) => {
       return res.json({ result: false, error: 'Ce film est déjà dans votre collection' });
     }
 
-    user.movies.push(existingMovie._id);
+    user.movies.push({
+      movieid: existingMovie._id,
+    isLoaned: false
+  });
     await user.save();
 
     res.json({ result: true, message: 'Film ajouté avec succès !' });
