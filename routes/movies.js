@@ -59,13 +59,17 @@ router.get('/search/:title', async (req, res) => {
               const moreInfosURL = `${base_API}3/movie/${data.results[i].id}?append_to_response=credits,translations`;
               const newResponse = await fetch(encodeURI(moreInfosURL), options_get);
               let moreInfos = await newResponse.json();
-
-              //Mise en forme pour la BDD
-              myResults.push(makeACard(moreInfos))              
+              // On exclus tous les films qui ne sont pas sortis (exemple Toy Story 6 - id 1689447)
+              if(moreInfos.status == "Released") {
+                //Mise en forme pour la BDD
+                myResults.push(makeACard(moreInfos))   
+              }
+          
             }            
         }
     }
-    res.status(200).send({result: true, answer : myResults});
+    (myResults) ? res.status(200).send({result: true, answer : myResults}) : res.status(200).send({result: false, error: 'Aucun resultat retourné'})
+    
 });
 
 module.exports = router;
