@@ -139,7 +139,7 @@ router.post('/add-movie', async (req, res) => {
         DirectedBy: directorsIds,
         Cast: actorsIds,
         Genres: genresIds,
-        MusicBy: composersIds
+        MusicBy: composersIds,
       });
 
       existingMovie = await newMovie.save();
@@ -156,8 +156,10 @@ router.post('/add-movie', async (req, res) => {
 
     user.movies.push({
       movieid: existingMovie._id,
-    isLoaned: false
+      isLoaned: false,
+      isLiked: false
   });
+  console.log(user.movies)
     await user.save();
 
     res.json({ result: true, message: 'Film ajouté avec succès !' });
