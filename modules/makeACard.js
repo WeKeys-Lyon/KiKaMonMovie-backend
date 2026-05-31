@@ -1,4 +1,13 @@
 const Movie = require("../models/movies");
+const TMDB_BEARER = process.env.TMDB_BEARER;
+const base_API = `https://api.themoviedb.org/`
+const options_get = {
+  method: 'GET',
+  headers: {
+    accept: 'application/json',
+    Authorization: `Bearer ${TMDB_BEARER}`
+  }
+};
 
 function makeACard(api_data) {
     // Obtenir le titre en Français
@@ -43,4 +52,42 @@ function makeACard(api_data) {
         genre: cleanGenres
     })
 }
-module.exports = { makeACard };
+
+async function getMovieTreated(moviedata) {
+            // Si le data.results[i].id match avec le tmdb_id, alors on skip les appels API pour prendre les données Mongoose.
+            const getMyMovieOffline = await Movie.findOne({tmdb_id: moviedata.id})
+              .populate('DirectedBy.directorid')
+              .populate('Cast.actorid')
+              .populate('Genres.genreid')
+              .populate('MusicBy.composerid');
+            if (getMyMovieOffline) {
+              const formattedOfflineMovie = {
+                tmdb_id: getMyMovieOffline.tmdb_id,
+                original_title: getMyMovieOffline.original_title,
+                title_fr: getMyMovieOffline.title_fr,
+                release_date: getMyMovieOffline.release_date ? new Date(getMyMovieOffline.release_date).toISOString().split('T')[0] : '',
+                poster_path: getMyMovieOffline.poster_path,
+                DirectedBy: getMyMovieOffline.DirectedBy.map(director => ({
+                  name: director.directorid?.name })),
+                Cast: getMyMovieOffline.Cast.map(actor => ({
+                  name: actor.actorid?.name })),
+                Genres: getMyMovieOffline.Genres.map(genre => ({
+                  name: genre.genreid?.name })),
+                MusicBy: getMyMovieOffline.MusicBy.map(composer => ({
+                  name: composer.composerid?.name }))
+
+              };
+              return formattedOfflineMovie;            
+            } else {
+              const moreInfosURL = `${base_API}3/movie/${moviedata.id}?append_to_response=credits,translations`;
+              const newResponse = await fetch(encodeURI(moreInfosURL), options_get);
+              let moreInfos = await newResponse.json();
+              // On exclus tous les films qui ne sont pas sortis (exemple Toy Story 6 - id 1689447)
+              if(moreInfos.status == "Released") {
+                //Mise en forme pour la BDD
+                return (makeACard(moreInfos))
+              }
+          
+            }            
+        }
+module.exports = { makeACard, getMovieTreated };
