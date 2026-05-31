@@ -49,7 +49,7 @@ function makeACard(api_data) {
         DirectedBy: cleanDirectors,
         Cast: cleanCast,
         MusicBy: cleanComposers,
-        genre: cleanGenres
+        Genres: cleanGenres
     })
 }
 
