@@ -43,7 +43,6 @@ function makeACard(api_data) {
         tmdb_genre_id: element.id
     })    
     })
-    console.log(cleanCast)
     return ({
         tmdb_id: api_data.id,
         original_title: api_data.original_title,
