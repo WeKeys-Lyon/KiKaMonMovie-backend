@@ -11,6 +11,7 @@ const Composer = require('../models/composers');
 const bcrypt = require('bcrypt');
 const uid2 = require('uid2');
 const { checkBody, checkUsername, checkEmail, checkPassword} = require('../modules/checkBody');
+const {getMovieTreated} = require('../modules/makeACard')
 
 
 // inscription d'un nouvel utilisateur
@@ -169,6 +170,33 @@ router.post('/add-movie', async (req, res) => {
     console.error("Erreur critique :", error);
     res.json({ result: false, error: 'Erreur interne du serveur' });
   } 
+});
+
+router.post('/loadmovies', async (req, res) => {
+    if (!checkBody(req.body, ['token'])) {
+        res.status(200).send({result: false, answer : 'Missing parameters'});
+        return;
+    }
+  let myResults = []
+
+  const user = await User.findOne({token: req.body.token}).populate('movies.movieid').then(async data => {
+    
+    if (data.movies) {
+
+      const temp = await data.movies.forEach(async movie => {
+       let myMovies = {id: movie.movieid.tmdb_id}
+      myResults.push(await getMovieTreated(myMovies))
+      })
+
+     await console.log(await myResults)
+    
+    
+    
+    res.status(200).send({result: false, answer: myResults})
+  }});
+
+   
+
 });
 
 module.exports = router;  
