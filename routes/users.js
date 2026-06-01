@@ -90,7 +90,7 @@ router.post('/add-movie', async (req, res) => {
       for (const directorData of (movie.DirectedBy || [])) {
         let director = await Director.findOne({ tmdb_director_id: directorData.tmdb_director_id });
         if (!director) {
-          director = new Director({ name: directorData.name, tmdb_director_id: directorData.tmdb_director_id });
+          director = new Director({ name: directorData.name, tmdb_director_id: directorData.tmdb_director_id, popularity: directorData.popularity });
           await director.save();
         }
         directorsIds.push({ directorid: director._id });
@@ -101,7 +101,7 @@ router.post('/add-movie', async (req, res) => {
       for (const actorData of (movie.Cast || [])) {
         let castMember = await Cast.findOne({ tmdb_actor_id: actorData.tmdb_actor_id });
         if (!castMember) {
-          castMember = new Cast({ name: actorData.name, tmdb_actor_id: actorData.tmdb_actor_id });
+          castMember = new Cast({ name: actorData.name, tmdb_actor_id: actorData.tmdb_actor_id, popularity: actorData.popularity });
           await castMember.save();
         }
         actorsIds.push({ actorid: castMember._id }); 
@@ -109,7 +109,7 @@ router.post('/add-movie', async (req, res) => {
 
       // -- GESTION DES GENRES (genres.js) --
       const genresIds = [];
-      for (const genreData of (movie.genre || [])) {
+      for (const genreData of (movie.Genres || [])) {
         let genre = await Genre.findOne({ tmdb_genre_id: genreData.tmdb_genre_id });
         if (!genre) {
           genre = new Genre({ name: genreData.name, tmdb_genre_id: genreData.tmdb_genre_id });
@@ -121,7 +121,7 @@ router.post('/add-movie', async (req, res) => {
       // -- GESTION DES COMPOSITEURS (composers.js) --
       const composersIds = [];
       for (const composerData of (movie.MusicBy || [])) {
-        let composer = await Composer.findOne({ tmdb_composer_id: composerData.tmdb_composer_id });
+        let composer = await Composer.findOne({ tmdb_composer_id: composerData.tmdb_composer_id, popularity: composerData.popularity });
         if (!composer) {
           composer = new Composer({ name: composerData.name, tmdb_composer_id: composerData.tmdb_composer_id });
           await composer.save();
@@ -140,6 +140,7 @@ router.post('/add-movie', async (req, res) => {
         Cast: actorsIds,
         Genres: genresIds,
         MusicBy: composersIds,
+        popularity: movie.popularity
       });
 
       existingMovie = await newMovie.save();

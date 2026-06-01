@@ -5,6 +5,6 @@ const genresSchema = new mongoose.Schema({
     tmdb_genre_id: {type: Number, required: true, unique: true}
 });
 
-const Genres = mongoose.model('genres', genresSchema);
+const Genre = mongoose.model('genres', genresSchema);
 
-module.exports = Genres;
+module.exports = Genre;
