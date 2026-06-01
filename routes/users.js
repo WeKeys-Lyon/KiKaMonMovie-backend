@@ -123,7 +123,7 @@ router.post('/add-movie', async (req, res) => {
       for (const composerData of (movie.MusicBy || [])) {
         let composer = await Composer.findOne({ tmdb_composer_id: composerData.tmdb_composer_id, popularity: composerData.popularity });
         if (!composer) {
-          composer = new Composer({ name: composerData.name, tmdb_composer_id: composerData.tmdb_composer_id });
+          composer = new Composer({ name: composerData.name, tmdb_composer_id: composerData.tmdb_composer_id, popularity: composerData.popularity });
           await composer.save();
         }
         composersIds.push({ composerid: composer._id });
