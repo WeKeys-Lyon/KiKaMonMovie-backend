@@ -22,6 +22,7 @@ router.get('/search/:title', async (req, res) => {
     const response = await fetch(encodeURI(myUrl), options_get);
     let data = await response.json();
     data.results.sort((a,b) => b.popularity - a.popularity);
+
     if (!data.total_results) {
       res.status(200).send({result: false, error: 'Aucun resultat retourné'});
       return;
@@ -32,6 +33,7 @@ router.get('/search/:title', async (req, res) => {
     for(let i = 0; i < times; i++){
       (data.results[i]) ? myResults.push(await getMovieTreated(data.results[i])) : '';
     }
+    
     (myResults) ? res.status(200).send({result: true, answer : myResults}) : res.status(200).send({result: false, error: 'Aucun resultat retourné'})
     
 });
@@ -41,7 +43,6 @@ router.get('/searchpeople/:people', async (req, res) => {
 
     const responsePerson = await fetch(encodeURI(myPersonUrl), options_get);
     let dataPerson = await responsePerson.json();
-    console.log(dataPerson)
     if (dataPerson.total_results == 0) {
         res.status(200).send({result: false, error: 'Pas de personnalité trouvé.'});
         return;
@@ -64,7 +65,7 @@ router.get('/searchpeople/:people', async (req, res) => {
           poster_path: e.poster_path,
           release_date: e.release_date
         }))
-    res.status(200).send({result: true, answer: results})
+    res.status(200).send({result: true, answer: results, people: dataPerson.results[0].name})
 
     }
 });
@@ -74,5 +75,20 @@ router.get('/searchid/:id', async (req, res) => {
 
     (myResults) ? res.status(200).send({result: true, answer: myResults}) : res.status(200).send({result: false, error: 'Rien n a fonctionné'})
 });
+
+router.get('/searchean/:id', async (req, res) => {
+  if (req.params.id) {
+
+    const myURL = `http://gapi.wekeys.fr:7000/ecosia/search?text='EAN ${req.params.id}'&limit=1`;
+    const response = await fetch(encodeURI(myURL));
+    const data = await response.json();
+    
+    (data.results) ? res.status(200).send({result: true, answer: data.results[0].title}) : res.status(200).send({result: false, error: 'La recherche n\'a rien donné'});
+    return;
+  } else {
+    res.status(200).send({result: false, error: 'Manque le paramètre ID req.params.id'});
+    return
+  }
+})
 
 module.exports = router;
