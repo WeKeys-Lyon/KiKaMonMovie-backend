@@ -163,5 +163,40 @@ router.post('/add-movie', async (req, res) => {
   } 
 });
 
+//supprimer un film
+router.delete('/delete-movie/', async (req, res) => {
+  try {
+    const { token, tmdb_id } = req.body;
+
+    if (!token || !tmdb_id) {
+      return res.json({ result: false, error: 'Paramètres manquants' });
+    }
+
+    const user = await User.findOne({ token: token }).populate('movies.movieid');
+    
+    if (!user) {
+      return res.json({ result: false, error: 'Utilisateur non trouvé' });
+    }
+    const targetMovie = user.movies.find(m => m.movieid && m.movieid.tmdb_id === tmdb_id);
+    if (!targetMovie) {
+      console.log("❌ Le film n'est même pas dans la collection de cet utilisateur !");
+      return res.json({ result: false, error: "Ce film n'est pas dans votre collection" });
+    }
+    const userUpdate = await User.findOneAndUpdate(
+      { token: token },
+      { $pull: { movies: { movieid: targetMovie.movieid._id } } }, 
+      { returnDocument: 'after' } 
+    );
+
+    console.log(`✅ VICTOIRE ! Il reste maintenant ${userUpdate.movies.length} films dans la collection.`);
+    res.json({ result: true, message: 'Film supprimé avec succès !' });
+    
+  } catch (error) {
+    console.error("Erreur critique :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+
 module.exports = router;  
 
