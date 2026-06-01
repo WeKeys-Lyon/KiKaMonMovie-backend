@@ -41,10 +41,12 @@ router.get('/searchpeople/:people', async (req, res) => {
 
     const responsePerson = await fetch(encodeURI(myPersonUrl), options_get);
     let dataPerson = await responsePerson.json();
-        if (dataPerson.total_results == 0) {
+    console.log(dataPerson)
+    if (dataPerson.total_results == 0) {
         res.status(200).send({result: false, error: 'Pas de personnalité trouvé.'});
         return;
     }
+    dataPerson.results.sort((a,b) => b.popularity - a.popularity)
     const personID = dataPerson.results[0].id;
 
     const detailsUrl = `${base_API}3/person/${personID}/movie_credits`;
