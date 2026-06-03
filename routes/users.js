@@ -236,6 +236,5 @@ router.delete('/delete-movie/', async (req, res) => {
   }
 });
 
-
 module.exports = router;  
 

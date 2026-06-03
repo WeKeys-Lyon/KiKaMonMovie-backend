@@ -22,7 +22,8 @@ function makeACard(api_data) {
     popularity: element.popularity
     })});
     // Obtenir la liste des compositeurs
-    const getComposers = api_data.credits.crew.filter(e => (e.job == "Original Music Composer" || e.job == "Music Director"));
+    let getComposers = api_data.credits.crew.filter(e => (e.job == "Original Music Composer" || e.job == "Music Director" || e.job == "Conductor" || e.job == "Orchestrator"));
+    getComposers = [...new Map(getComposers.map(element => [element.name, element])).values()]
     let cleanComposers = [];
     getComposers.forEach(element => { cleanComposers.push({
     name: element.name,
