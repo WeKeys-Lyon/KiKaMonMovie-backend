@@ -87,6 +87,7 @@ async function getMovieTreated(moviedata) {
               const moreInfosURL = `${base_API}3/movie/${moviedata.id}?append_to_response=credits,translations`;
               const newResponse = await fetch(encodeURI(moreInfosURL), options_get);
               let moreInfos = await newResponse.json();
+
               // On exclus tous les films qui ne sont pas sortis (exemple Toy Story 6 - id 1689447)
               if(moreInfos.status == "Released") {
                 //Mise en forme pour la BDD

@@ -31,9 +31,16 @@ router.get('/search/:title', async (req, res) => {
 
     const times = 10;
     for(let i = 0; i < times; i++){
-      (data.results[i]) ? myResults.push(await getMovieTreated(data.results[i])) : '';
+      
+      if (data.results[i]) {
+        const midResult = await getMovieTreated(data.results[i])
+        if (midResult) {
+          myResults.push(midResult)
+        }
+      }
+
     }
-    
+  
     (myResults) ? res.status(200).send({result: true, answer : myResults}) : res.status(200).send({result: false, error: 'Aucun resultat retourné'})
     
 });
