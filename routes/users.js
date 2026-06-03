@@ -40,35 +40,65 @@ router.post('/signup', async (req, res) => {
     res.status(201).send({result: true, answer : {username: newUser.username, email: newUser.email, token: newUser.token, movies: newUser.movies || []}});
 }),
 
-//connexion d'un utilisateur déjà inscrit
 router.post('/signin', async (req, res) => {
-    if (!checkBody(req.body, ['mylogin', 'password'])) {
-        res.status(200).send({result: false, answer : 'Missing parameters'});
-        return;
-    }
-    const username = await User.findOne({username: req.body.mylogin});
-    const email = await User.findOne({email: req.body.mylogin});
-    let userExists = '';
-    if (username) {
-        userExists = username;
-    } else if (email) {
-        userExists = email;
-    } else {
-      res.status(200).send({result: false, answer : 'Utilisateur ou Email inconnu'});
-      return;
-    }
-   
-    if ( !bcrypt.compareSync(req.body.password, userExists.password) ) {
-        res.status(200).send({result: false, answer : 'User not found or wrong password'});
-        return;
-    } else {
+    try {
+        // 1. Vérification des champs
+        if (!checkBody(req.body, ['mylogin', 'password'])) {
+            return res.status(400).send({result: false, answer : 'Missing parameters'});
+        }
 
-        (username) ? res.status(200).send({result: true, answer: { username: username.username, email: username.email, token: username.token, movies: username.movies }}) : res.status(200).send({result: true, answer: { username: email.username, email: email.email, token: email.token, movies: email.movies }})
-    }
+        // 2. Recherche de l'utilisateur 
+        const userExists = await User.findOne({
+            $or: [{ username: req.body.mylogin }, { email: req.body.mylogin }]
+        });
+
+        // Sécurité : Si l'utilisateur n'existe pas du tout
+        if (!userExists) {
+            return res.status(400).send({result: false, answer : 'User not found or wrong password'});
+        }
+
+        // 3. Vérification du mot de passe
+        if ( !bcrypt.compareSync(req.body.password, userExists.password) ) {
+            return res.status(400).send({result: false, answer : 'User not found or wrong password'});
+        }
+
+        // 4. On récupère l'utilisateur AVEC tous ses films dépliés
     
+        const populatedUser = await User.findById(userExists._id).populate({
+            path: 'movies.movieid',
+            // On déballe aussi les sous-catégories pour que tes filtres Frontend fonctionnent !
+            populate: [
+                { path: 'Genres' },
+                { path: 'DirectedBy' },
+                { path: 'Cast' },
+                { path: 'MusicBy' }
+            ]
+        });
+
+        // 5. On nettoie la liste pour le Frontend
+       
+        const formattedMovies = populatedUser.movies
+            .filter(m => m.movieid) 
+            .map(m => m.movieid);   
+
+        // 6. redux
+        res.status(200).send({
+            result: true, 
+            answer: { 
+                username: populatedUser.username, 
+                email: populatedUser.email, 
+                token: populatedUser.token,
+                movies: formattedMovies 
+            }
+        });
+
+    } catch (error) {
+        console.error("Erreur dans signin :", error);
+        res.status(500).send({result: false, answer: 'Internal server error'});
+    }
 });
 
-//ajouter un film
+// Ajouter un film
 router.post('/add-movie', async (req, res) => {
   try {     
     const { token, movie } = req.body;
@@ -79,13 +109,13 @@ router.post('/add-movie', async (req, res) => {
       return res.json({ result: false, error: 'Utilisateur introuvable' });
     }
 
-    // 2. Vérifier si le film existe déjà
+    // 2. Vérifier si le film existe déjà dans la BDD Globale
     let existingMovie = await Movie.findOne({ tmdb_id: movie.tmdb_id });
 
-    // 3. SI LE FILM N'EXISTE PAS : On peuple tes 4 collections !
+    // 3. SI LE FILM N'EXISTE PAS : On peuple les collections
     if (!existingMovie) {
       
-      // -- GESTION DES RÉALISATEURS (directors.js) --
+      // -- GESTION DES RÉALISATEURS --
       const directorsIds = [];
       for (const directorData of (movie.DirectedBy || [])) {
         let director = await Director.findOne({ tmdb_director_id: directorData.tmdb_director_id });
@@ -96,7 +126,7 @@ router.post('/add-movie', async (req, res) => {
         directorsIds.push({ directorid: director._id });
       }
 
-      // -- GESTION DU CASTING (cast.js) --
+      // -- GESTION DU CASTING --
       const actorsIds = [];
       for (const actorData of (movie.Cast || [])) {
         let castMember = await Cast.findOne({ tmdb_actor_id: actorData.tmdb_actor_id });
@@ -107,9 +137,9 @@ router.post('/add-movie', async (req, res) => {
         actorsIds.push({ actorid: castMember._id }); 
       }
 
-      // -- GESTION DES GENRES (genres.js) --
+      // -- GESTION DES GENRES (👈 CORRECTION : Genres au lieu de genre) --
       const genresIds = [];
-      for (const genreData of (movie.Genres || [])) {
+      for (const genreData of (movie.Genres || [])) { 
         let genre = await Genre.findOne({ tmdb_genre_id: genreData.tmdb_genre_id });
         if (!genre) {
           genre = new Genre({ name: genreData.name, tmdb_genre_id: genreData.tmdb_genre_id });
@@ -118,7 +148,7 @@ router.post('/add-movie', async (req, res) => {
         genresIds.push({ genreid: genre._id });
       }
 
-      // -- GESTION DES COMPOSITEURS (composers.js) --
+      // -- GESTION DES COMPOSITEURS --
       const composersIds = [];
       for (const composerData of (movie.MusicBy || [])) {
         let composer = await Composer.findOne({ tmdb_composer_id: composerData.tmdb_composer_id, popularity: composerData.popularity });
@@ -146,21 +176,22 @@ router.post('/add-movie', async (req, res) => {
       existingMovie = await newMovie.save();
     }
 
-    // 4. Ajouter le film à l'utilisateur
+    // 4. Vérifier si le film est DÉJÀ dans la collection de L'UTILISATEUR
+    // 👈 CORRECTION : On cible bien "m.movieid" pour la comparaison
     const isAlreadyInCollection = user.movies.some(
-      (movieId) => movieId.toString() === existingMovie._id.toString()
+      (m) => m.movieid && m.movieid.toString() === existingMovie._id.toString()
     );
 
     if (isAlreadyInCollection) {
       return res.json({ result: false, error: 'Ce film est déjà dans votre collection' });
     }
 
+    // 5. Ajouter le film à l'utilisateur
     user.movies.push({
       movieid: existingMovie._id,
       isLoaned: false,
-      isLiked: false
-  });
-  console.log(user.movies)
+      isLiked: false // 👈 CORRECTION : On ajoute isLiked car c'est "required: true" dans ton modèle !
+    });
     await user.save();
 
     res.json({ result: true, message: 'Film ajouté avec succès !' });
@@ -170,6 +201,41 @@ router.post('/add-movie', async (req, res) => {
     res.json({ result: false, error: 'Erreur interne du serveur' });
   } 
 });
+
+//supprimer un film
+router.delete('/delete-movie/', async (req, res) => {
+  try {
+    const { token, tmdb_id } = req.body;
+
+    if (!token || !tmdb_id) {
+      return res.json({ result: false, error: 'Paramètres manquants' });
+    }
+
+    const user = await User.findOne({ token: token }).populate('movies.movieid');
+    
+    if (!user) {
+      return res.json({ result: false, error: 'Utilisateur non trouvé' });
+    }
+    const targetMovie = user.movies.find(m => m.movieid && m.movieid.tmdb_id === tmdb_id);
+    if (!targetMovie) {
+      console.log("❌ Le film n'est même pas dans la collection de cet utilisateur !");
+      return res.json({ result: false, error: "Ce film n'est pas dans votre collection" });
+    }
+    const userUpdate = await User.findOneAndUpdate(
+      { token: token },
+      { $pull: { movies: { movieid: targetMovie.movieid._id } } }, 
+      { returnDocument: 'after' } 
+    );
+
+    console.log(`✅ VICTOIRE ! Il reste maintenant ${userUpdate.movies.length} films dans la collection.`);
+    res.json({ result: true, message: 'Film supprimé avec succès !' });
+    
+  } catch (error) {
+    console.error("Erreur critique :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
 
 module.exports = router;  
 
