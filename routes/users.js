@@ -11,6 +11,7 @@ const Composer = require('../models/composers');
 const bcrypt = require('bcrypt');
 const uid2 = require('uid2');
 const { checkBody, checkUsername, checkEmail, checkPassword} = require('../modules/checkBody');
+const {getMovieTreated} = require('../modules/makeACard');
 
 
 // inscription d'un nouvel utilisateur
@@ -60,37 +61,26 @@ router.post('/signin', async (req, res) => {
         // 3. Vérification du mot de passe
         if ( !bcrypt.compareSync(req.body.password, userExists.password) ) {
             return res.status(400).send({result: false, answer : 'User not found or wrong password'});
-        }
+        } else {
 
-        // 4. On récupère l'utilisateur AVEC tous ses films dépliés
-    
-        const populatedUser = await User.findById(userExists._id).populate({
-            path: 'movies.movieid',
-            // On déballe aussi les sous-catégories pour que tes filtres Frontend fonctionnent !
-            populate: [
-                { path: 'Genres' },
-                { path: 'DirectedBy' },
-                { path: 'Cast' },
-                { path: 'MusicBy' }
-            ]
-        });
+      async function getLocalMovies(userData) {
+        //  4.1 Fonction qui prends les movieid de l'utilisateur, puis va sortir les résultats bien formatés
+        if (userData.movies) {
 
-        // 5. On nettoie la liste pour le Frontend
-       
-        const formattedMovies = populatedUser.movies
-            .filter(m => m.movieid) 
-            .map(m => m.movieid);   
-
-        // 6. redux
-        res.status(200).send({
-            result: true, 
-            answer: { 
-                username: populatedUser.username, 
-                email: populatedUser.email, 
-                token: populatedUser.token,
-                movies: formattedMovies 
+          const myResults = await Promise.all( userData.movies.map(async movie => {
+            let myMovies = {id: movie.movieid.tmdb_id}
+            return await getMovieTreated(myMovies)
+            }) )
+          
+          return myResults;
+              }
             }
-        });
+          // 4.2 On prépare les données depuis userExists et on lance la fonction de formattage
+        const userData = await userExists.populate({ path: 'movies.movieid', model: Movie});
+        const userMovies = await getLocalMovies(userData);
+        // 5. Sortie pour le reducer
+        res.status(200).send({result: true, answer: { username: userExists.username, email: userExists.email, token: userExists.token, movies:  userMovies }})
+    };
 
     } catch (error) {
         console.error("Erreur dans signin :", error);
