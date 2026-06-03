@@ -205,18 +205,16 @@ router.delete('/delete-movie/', async (req, res) => {
     if (!user) {
       return res.json({ result: false, error: 'Utilisateur non trouvé' });
     }
-    console.log(await user.movies);
-    console.log(req.body.tmdb_id)
-    const lol = user.movies.find(m => console.log(m.movieid.tmdb_id));
-    lol
-    const targetMovie = user.movies.find(m => {m.movieid.tmdb_id === req.body.tmdb_id});
+
+    const targetMovie = user.movies.filter(m => m.movieid.tmdb_id === req.body.tmdb_id);
+
     if (!targetMovie) {
       console.log("❌ Le film n'est même pas dans la collection de cet utilisateur !");
       return res.json({ result: false, error: "Ce film n'est pas dans votre collection" });
     }
     const userUpdate = await User.findOneAndUpdate(
-      { token: token },
-      { $pull: { movies: { movieid: targetMovie.movieid._id } } }, 
+      { token: req.body.token },
+      { $pull: { movies: { movieid: targetMovie[0].movieid._id } } }, 
       { returnDocument: 'after' } 
     );
 
