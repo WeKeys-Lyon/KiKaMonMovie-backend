@@ -22,7 +22,8 @@ const userSchema = new mongoose.Schema({
               userid: {type: mongoose.Schema.Types.ObjectId, ref:'users'},
               borrower: {type: String, required: false}
             }],
-            isAsked: [{type: mongoose.Schema.Types.ObjectId, ref:'users'}]
+            isAsked: [{type: mongoose.Schema.Types.ObjectId, ref:'users'}],
+            isLiked: {type: Boolean, required: true}
 
   }],
 });

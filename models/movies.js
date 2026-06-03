@@ -18,6 +18,7 @@ const movieSchema = mongoose.Schema({
     MusicBy: [{
         composerid: {type: mongoose.Schema.Types.ObjectId, ref:'composers'},
     }],
+    popularity: {type: Number, required: false}
     })
 const Movie = mongoose.model('movies', movieSchema);
 
