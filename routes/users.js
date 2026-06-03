@@ -64,7 +64,21 @@ router.post('/signin', async (req, res) => {
         return;
     } else {
 
-        (username) ? res.status(200).send({result: true, answer: { username: username.username, email: username.email, token: username.token, movies: username.movies }}) : res.status(200).send({result: true, answer: { username: email.username, email: email.email, token: email.token, movies: email.movies }})
+      async function getLocalMovies(mong) {
+        if (mong.movies) {
+
+          const myResults = await Promise.all( mong.movies.map(async movie => {
+            let myMovies = {id: movie.movieid.tmdb_id}
+            return await getMovieTreated(myMovies)
+            }) )
+          
+          return myResults;
+              }
+            }
+        const userData = await userExists.populate({ path: 'movies.movieid', model: Movie});
+        const userMovies = await getLocalMovies(userData);
+
+        (username) ? res.status(200).send({result: true, answer: { username: username.username, email: username.email, token: username.token, movies:  userMovies }}) : res.status(200).send({result: true, answer: { username: email.username, email: email.email, token: email.token, movies: userMovies }})
     }
     
 });
@@ -161,7 +175,7 @@ router.post('/add-movie', async (req, res) => {
       isLoaned: false,
       isLiked: false
   });
-  console.log(user.movies)
+
     await user.save();
 
     res.json({ result: true, message: 'Film ajouté avec succès !' });
