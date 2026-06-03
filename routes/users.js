@@ -195,18 +195,21 @@ router.post('/add-movie', async (req, res) => {
 //supprimer un film
 router.delete('/delete-movie/', async (req, res) => {
   try {
-    const { token, tmdb_id } = req.body;
+    if (!checkBody(req.body, ['token', 'tmdb_id'])) {
+    res.status(400).send({result: false, answer : 'Missing parameters'});
+    return;
+  }
 
-    if (!token || !tmdb_id) {
-      return res.json({ result: false, error: 'Paramètres manquants' });
-    }
-
-    const user = await User.findOne({ token: token }).populate('movies.movieid');
+    const user = await User.findOne({ token: req.body.token }).populate('movies.movieid');
     
     if (!user) {
       return res.json({ result: false, error: 'Utilisateur non trouvé' });
     }
-    const targetMovie = user.movies.find(m => m.movieid && m.movieid.tmdb_id === tmdb_id);
+    console.log(await user.movies);
+    console.log(req.body.tmdb_id)
+    const lol = user.movies.find(m => console.log(m.movieid.tmdb_id));
+    lol
+    const targetMovie = user.movies.find(m => {m.movieid.tmdb_id === req.body.tmdb_id});
     if (!targetMovie) {
       console.log("❌ Le film n'est même pas dans la collection de cet utilisateur !");
       return res.json({ result: false, error: "Ce film n'est pas dans votre collection" });
