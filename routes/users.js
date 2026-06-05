@@ -253,6 +253,7 @@ router.post('/add-loan', async (req, res) => {
         if (movieIndex !== -1) {
           //On ajoute notre document newLoan dans pastLoans
           user.movies[movieIndex].pastLoans.push(newLoan);
+          user.movies[movieIndex].isLoaned = true;
           await user.save();
           res.status(200).send({result: true, answer: user.movies[movieIndex].pastLoans })
         } else {
