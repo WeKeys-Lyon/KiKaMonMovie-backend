@@ -69,8 +69,9 @@ router.post('/signin', async (req, res) => {
         if (userData.movies) {
 
           const myResults = await Promise.all( userData.movies.map(async movie => {
-            let myMovies = {id: movie.movieid.tmdb_id}
-            return await getMovieTreated(myMovies)
+            /* let myMovies = {id: movie.movieid.tmdb_id} */
+            
+            return await getMovieTreated(movie)
             }) )
           
           return myResults;
@@ -142,7 +143,7 @@ router.post('/add-movie', async (req, res) => {
       // -- GESTION DES COMPOSITEURS --
       const composersIds = [];
       for (const composerData of (movie.MusicBy || [])) {
-        let composer = await Composer.findOne({ tmdb_composer_id: composerData.tmdb_composer_id, popularity: composerData.popularity });
+        let composer = await Composer.findOne({ tmdb_composer_id: composerData.tmdb_composer_id});
         if (!composer) {
           composer = new Composer({ name: composerData.name, tmdb_composer_id: composerData.tmdb_composer_id, popularity: composerData.popularity });
           await composer.save();
@@ -255,12 +256,13 @@ router.post('/add-loan', async (req, res) => {
           user.movies[movieIndex].pastLoans.push(newLoan);
           user.movies[movieIndex].isLoaned = true;
           await user.save();
+
           res.status(200).send({result: true, answer: user.movies[movieIndex].pastLoans })
         } else {
-          res.status(200).send({result: false, answer: 'Film introuvable' });
+          res.status(200).send({result: false, error: 'Film introuvable' });
         }
       } else {
-        res.status(200).send({result: false, answer: 'Utilisateur introuvable' })
+        res.status(200).send({result: false, error: 'Utilisateur introuvable' })
       }
       
       
@@ -269,5 +271,40 @@ router.post('/add-loan', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
+
+router.post('/remove-loan', async (req,res) => {
+  try { 
+    if (!checkBody(req.body, ['token', 'tmdb_id'])) {
+      res.status(400).send({result: false, answer : 'Missing parameters'});
+      return;
+    }
+
+    //on obtient l'Object_ID du film
+    const myID = await Movie.findOne({tmdb_id: req.body.tmdb_id}).select('_id');
+
+    //On créé une variable de l'utilisateur
+    const user = await User.findOne({token: req.body.token});
+
+    if (user) {
+      //On va chercher dans quel index de movies se trouve le film séléctionné
+      const movieIndex = user.movies.findIndex(movie => movie.movieid.toString() == myID._id);
+      console.log(movieIndex)
+      if (movieIndex !== -1) {  
+        user.movies[movieIndex].isLoaned = false;
+        await user.save().then(data => res.status(200).send({result: true, answer: user.movies[movieIndex]}));
+
+        
+      } else {
+        res.status(200).send({result: false, error: 'Film introuvable' });
+      }  
+    } else {
+      res.status(200).send({result: false, error: 'Utilisateur introuvable' })
+    }
+  } catch (error) {
+    console.error("Erreur critique :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+
+})
 module.exports = router;  
 
