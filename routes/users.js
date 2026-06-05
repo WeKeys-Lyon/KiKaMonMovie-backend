@@ -12,6 +12,7 @@ const bcrypt = require('bcrypt');
 const uid2 = require('uid2');
 const { checkBody, checkUsername, checkEmail, checkPassword} = require('../modules/checkBody');
 const {getMovieTreated} = require('../modules/makeACard');
+const mongoose = require('mongoose');
 
 
 // inscription d'un nouvel utilisateur
@@ -227,5 +228,45 @@ router.delete('/delete-movie/', async (req, res) => {
   }
 });
 
+router.post('/add-loan', async (req, res) => {
+    try {
+      //on obtient l'Object_ID du film
+      const myID = await Movie.findOne({tmdb_id: req.body.tmdb_id}).select('_id');
+
+      //on créé le nouveau document de pastLoans
+      const newLoan = {
+          movieid: await myID._id,
+          isSharedToUser: req.body.isSharedToUser,
+          userid: (req.body.userid) ? req.body.userid : null,
+          borrower: (req.body.isSharedToUser) ? '' :(req.body.borrower),
+          dueDate: req.body.dueDate,
+          notes: (req.body.notes) ? req.body.notes : null,
+          Notification: (req.body.Notification) ? true : false
+        };
+
+      //On créé une variable de l'utilisateur
+      const user = await User.findOne({token: req.body.token});
+      if (user) {
+        //On va chercher dans quel index de movies se trouve le film séléctionné
+        const movieIndex = user.movies.findIndex(movie => movie.movieid.toString() == myID._id);
+
+        if (movieIndex !== -1) {
+          //On ajoute notre document newLoan dans pastLoans
+          user.movies[movieIndex].pastLoans.push(newLoan);
+          await user.save();
+          res.status(200).send({result: true, answer: user.movies[movieIndex].pastLoans })
+        } else {
+          res.status(200).send({result: false, answer: 'Film introuvable' });
+        }
+      } else {
+        res.status(200).send({result: false, answer: 'Utilisateur introuvable' })
+      }
+      
+      
+  } catch (error) {
+    console.error("Erreur critique :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
 module.exports = router;  
 

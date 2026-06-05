@@ -5,7 +5,6 @@ function checkBody(object, tableau) {
   let count = 0
   tableau.forEach(element => {
     if (object[element]) {count++}
-    
   });
     if (count == tableau.length) {
         return true;
