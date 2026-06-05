@@ -18,9 +18,12 @@ const userSchema = new mongoose.Schema({
             physical_format: [{type: mongoose.Schema.Types.ObjectId, ref:'physical'}],
             pastLoans: [{
               movieid: {type: mongoose.Schema.Types.ObjectId, ref:'movies'},
-              isSharedToUser: {type: String, required: true},
+              isSharedToUser: {type: Boolean, required: true},
               userid: {type: mongoose.Schema.Types.ObjectId, ref:'users'},
-              borrower: {type: String, required: false}
+              borrower: {type: String, required: false},
+              dueDate: {type: Date, required: true},
+              notes: {type: String, require: false},
+              Notification: {type: Boolean, require: true, default: false}
             }],
             isAsked: [{type: mongoose.Schema.Types.ObjectId, ref:'users'}],
             isLiked: {type: Boolean, required: true}
