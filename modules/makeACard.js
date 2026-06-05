@@ -60,11 +60,13 @@ function makeACard(api_data) {
 
 async function getMovieTreated(moviedata) {
             // Si le data.results[i].id match avec le tmdb_id, alors on skip les appels API pour prendre les données Mongoose.
-            const getMyMovieOffline = await Movie.findOne({tmdb_id: moviedata.id})
+            console.log(moviedata)
+            const getMyMovieOffline = await Movie.findOne({tmdb_id: moviedata.movieid.tmdb_id})
               .populate('DirectedBy.directorid')
               .populate('Cast.actorid')
               .populate('Genres.genreid')
               .populate('MusicBy.composerid');
+            console.log(moviedata)
             if (getMyMovieOffline) {
               const formattedOfflineMovie = {
                 tmdb_id: getMyMovieOffline.tmdb_id,
@@ -79,7 +81,9 @@ async function getMovieTreated(moviedata) {
                 Genres: getMyMovieOffline.Genres.map(genre => ({
                   name: genre.genreid?.name })),
                 MusicBy: getMyMovieOffline.MusicBy.map(composer => ({
-                  name: composer.composerid?.name, popularity: composer.composerid?.popularity }))
+                  name: composer.composerid?.name, popularity: composer.composerid?.popularity })),
+                isLoaned: moviedata.isLoaned,
+                isLiked: moviedata.isLiked
 
               };
               return formattedOfflineMovie;            
