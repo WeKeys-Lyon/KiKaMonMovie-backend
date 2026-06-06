@@ -104,50 +104,50 @@ router.post('/add-movie', async (req, res) => {
     // 2. Vérifier si le film existe déjà dans la BDD Globale
     let existingMovie = await Movie.findOne({ tmdb_id: movie.tmdb_id });
 
-    // 3. SI LE FILM N'EXISTE PAS : On peuple les collections
+    // 3. SI LE FILM N'EXISTE PAS : On peuple les collections avec upsert
     if (!existingMovie) {
       
       // -- GESTION DES RÉALISATEURS --
       const directorsIds = [];
       for (const directorData of (movie.DirectedBy || [])) {
-        let director = await Director.findOne({ tmdb_director_id: directorData.tmdb_director_id });
-        if (!director) {
-          director = new Director({ name: directorData.name, tmdb_director_id: directorData.tmdb_director_id, popularity: directorData.popularity });
-          await director.save();
-        }
+        const director = await Director.findOneAndUpdate(
+          { tmdb_director_id: directorData.tmdb_director_id }, // Recherche
+          { name: directorData.name, popularity: directorData.popularity }, // Mise à jour
+          { new: true, upsert: true } // Création si inexistant
+        );
         directorsIds.push({ directorid: director._id });
       }
 
       // -- GESTION DU CASTING --
       const actorsIds = [];
       for (const actorData of (movie.Cast || [])) {
-        let castMember = await Cast.findOne({ tmdb_actor_id: actorData.tmdb_actor_id });
-        if (!castMember) {
-          castMember = new Cast({ name: actorData.name, tmdb_actor_id: actorData.tmdb_actor_id, popularity: actorData.popularity });
-          await castMember.save();
-        }
+        const castMember = await Cast.findOneAndUpdate(
+          { tmdb_actor_id: actorData.tmdb_actor_id },
+          { name: actorData.name, popularity: actorData.popularity },
+          { new: true, upsert: true }
+        );
         actorsIds.push({ actorid: castMember._id }); 
       }
 
-      // -- GESTION DES GENRES (👈 CORRECTION : Genres au lieu de genre) --
+      // -- GESTION DES GENRES --
       const genresIds = [];
       for (const genreData of (movie.Genres || [])) { 
-        let genre = await Genre.findOne({ tmdb_genre_id: genreData.tmdb_genre_id });
-        if (!genre) {
-          genre = new Genre({ name: genreData.name, tmdb_genre_id: genreData.tmdb_genre_id });
-          await genre.save();
-        }
+        const genre = await Genre.findOneAndUpdate(
+          { tmdb_genre_id: genreData.tmdb_genre_id },
+          { name: genreData.name }, // Les genres n'ont généralement pas de popularité
+          { new: true, upsert: true }
+        );
         genresIds.push({ genreid: genre._id });
       }
 
       // -- GESTION DES COMPOSITEURS --
       const composersIds = [];
       for (const composerData of (movie.MusicBy || [])) {
-        let composer = await Composer.findOne({ tmdb_composer_id: composerData.tmdb_composer_id});
-        if (!composer) {
-          composer = new Composer({ name: composerData.name, tmdb_composer_id: composerData.tmdb_composer_id, popularity: composerData.popularity });
-          await composer.save();
-        }
+        const composer = await Composer.findOneAndUpdate(
+          { tmdb_composer_id: composerData.tmdb_composer_id },
+          { name: composerData.name, popularity: composerData.popularity },
+          { new: true, upsert: true }
+        );
         composersIds.push({ composerid: composer._id });
       }
 
@@ -169,7 +169,6 @@ router.post('/add-movie', async (req, res) => {
     }
 
     // 4. Vérifier si le film est DÉJÀ dans la collection de L'UTILISATEUR
-    // 👈 CORRECTION : On cible bien "m.movieid" pour la comparaison
     const isAlreadyInCollection = user.movies.some(
       (m) => m.movieid && m.movieid.toString() === existingMovie._id.toString()
     );
@@ -182,7 +181,7 @@ router.post('/add-movie', async (req, res) => {
     user.movies.push({
       movieid: existingMovie._id,
       isLoaned: false,
-      isLiked: false // 👈 CORRECTION : On ajoute isLiked car c'est "required: true" dans ton modèle !
+      isLiked: false 
     });
     await user.save();
 
