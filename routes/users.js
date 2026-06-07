@@ -113,7 +113,7 @@ router.post('/add-movie', async (req, res) => {
         const director = await Director.findOneAndUpdate(
           { tmdb_director_id: directorData.tmdb_director_id }, // Recherche
           { name: directorData.name, popularity: directorData.popularity }, // Mise à jour
-          { new: true, upsert: true } // Création si inexistant
+          { returnDocument: 'after', upsert: true } // Création si inexistant
         );
         directorsIds.push({ directorid: director._id });
       }
@@ -124,7 +124,7 @@ router.post('/add-movie', async (req, res) => {
         const castMember = await Cast.findOneAndUpdate(
           { tmdb_actor_id: actorData.tmdb_actor_id },
           { name: actorData.name, popularity: actorData.popularity },
-          { new: true, upsert: true }
+          { returnDocument: 'after', upsert: true }
         );
         actorsIds.push({ actorid: castMember._id }); 
       }
@@ -135,7 +135,7 @@ router.post('/add-movie', async (req, res) => {
         const genre = await Genre.findOneAndUpdate(
           { tmdb_genre_id: genreData.tmdb_genre_id },
           { name: genreData.name }, // Les genres n'ont généralement pas de popularité
-          { new: true, upsert: true }
+          { returnDocument: 'after', upsert: true }
         );
         genresIds.push({ genreid: genre._id });
       }
@@ -146,7 +146,7 @@ router.post('/add-movie', async (req, res) => {
         const composer = await Composer.findOneAndUpdate(
           { tmdb_composer_id: composerData.tmdb_composer_id },
           { name: composerData.name, popularity: composerData.popularity },
-          { new: true, upsert: true }
+          { returnDocument: 'after', upsert: true }
         );
         composersIds.push({ composerid: composer._id });
       }
