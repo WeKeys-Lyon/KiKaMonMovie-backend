@@ -32,14 +32,16 @@ router.post('/signup', async (req, res) => {
     }
     const passwordHash = bcrypt.hashSync(req.body.password, 10);
     const token = uid2(32);
+    const generatedCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     const newUser = new User({
         username: req.body.username,
         password: passwordHash,
         email: req.body.email,
-        token: token
+        token: token,
+        friendCode: generatedCode
     });
     await newUser.save();
-    res.status(201).send({result: true, answer : {username: newUser.username, email: newUser.email, token: newUser.token, movies: newUser.movies || []}});
+    res.status(201).send({result: true, answer : {username: newUser.username, email: newUser.email, token: newUser.token, movies: newUser.movies, friendCode: newUser.friendCode || []}});
 }),
 
 router.post('/signin', async (req, res) => {
@@ -369,13 +371,6 @@ router.post('/my-social-data', async (req, res) => {
 
     const user = await User.findOne({ token: token }).populate('friends.userid', 'username friendCode');
     if (!user) return res.json({ result: false, error: 'Utilisateur introuvable' });
-
-    // Si pas de code, on en génère un
-    if (!user.friendCode) {
-      const generatedCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-      user.friendCode = generatedCode;
-      await user.save();
-    }
 
     res.json({ 
       result: true, 
