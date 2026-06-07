@@ -484,5 +484,55 @@ router.post('/friend-collection', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
+
+// ROUTE : Demander à emprunter un film
+router.post('/ask-movie', async (req, res) => {
+  try {
+    const { token, friendId, tmdb_id } = req.body;
+
+    // Sécurité : on vérifie que l'ID n'est pas vide
+    if (!tmdb_id) return res.json({ result: false, error: 'ID du film manquant' });
+
+    const me = await User.findOne({ token: token });
+    if (!me) return res.json({ result: false, error: 'Utilisateur non trouvé' });
+
+    // 1. On peuple directement les films de l'ami pour y voir clair
+    const friend = await User.findById(friendId).populate('movies.movieid');
+    if (!friend) return res.json({ result: false, error: 'Ami introuvable' });
+
+    // 2. Vérification de tes droits
+    const myPermissions = friend.friends.find(f => f.userid.toString() === me._id.toString());
+    if (!myPermissions || !myPermissions.canAskForMovies) {
+      return res.json({ result: false, error: 'Cet ami ne vous autorise pas à lui demander des films.' });
+    }
+
+   
+    const movieToAsk = friend.movies.find(m => m.movieid && m.movieid.tmdb_id == tmdb_id);
+
+    if (!movieToAsk) {
+      return res.json({ result: false, error: 'Ce film n\'est plus dans sa collection.' });
+    }
+    if (movieToAsk.isLoaned) {
+      return res.json({ result: false, error: 'Impossible : ce film est déjà en cours de prêt.' });
+    }
+
+    // 4. On vérifie si tu n'es pas déjà dans le tableau isAsked
+    const alreadyAsked = movieToAsk.isAsked.some(id => id.toString() === me._id.toString());
+    if (alreadyAsked) {
+      return res.json({ result: false, error: 'Vous avez déjà demandé ce film !' });
+    }
+
+    await User.updateOne(
+      { _id: friend._id, "movies._id": movieToAsk._id },
+      { $push: { "movies.$.isAsked": me._id } }
+    );
+
+    res.json({ result: true, message: 'Votre demande a bien été envoyée à votre ami !' });
+
+  } catch (error) {
+    console.error("Erreur demande film:", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
 module.exports = router;  
 
