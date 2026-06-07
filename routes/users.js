@@ -453,10 +453,12 @@ router.put('/update-friend-permissions', async (req, res) => {
   }
 });
 
-//ROUTE récupération de la collection d'un ami
+
+// ROUTE : Récupérer la collection d'un ami (si autorisé)
 router.post('/friend-collection', async (req, res) => {
   try {
     const { token, friendId } = req.body;
+
     const me = await User.findOne({ token: token });
     if (!me) return res.json({ result: false, error: 'Utilisateur non trouvé' });
 
@@ -464,16 +466,18 @@ router.post('/friend-collection', async (req, res) => {
     if (!friend) return res.json({ result: false, error: 'Ami introuvable' });
 
     const myPermissions = friend.friends.find(f => f.userid.toString() === me._id.toString());
-
-    if (!myPermissions) {
-      return res.json({ result: false, error: 'Vous n\'êtes pas dans la liste d\'amis de cet utilisateur.' });
-    }
-
-    if (!myPermissions.canSeeMyCollection) {
+    if (!myPermissions || !myPermissions.canSeeMyCollection) {
       return res.json({ result: false, error: 'Cet ami a restreint l\'accès à sa collection.' });
     }
+    const formattedMovies = await Promise.all(
+      friend.movies.map(async (movieObj) => {
+        return await getMovieTreated(movieObj);
+      })
+    );
 
-    res.json({ result: true, movies: friend.movies });
+    const finalMovies = formattedMovies.filter(m => m !== null);
+
+    res.json({ result: true, movies: finalMovies });
 
   } catch (error) {
     console.error("Erreur récupération collection ami:", error);
