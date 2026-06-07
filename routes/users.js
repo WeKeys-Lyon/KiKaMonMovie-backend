@@ -305,5 +305,180 @@ router.post('/remove-loan', async (req,res) => {
   }
 
 })
+// ROUTE : Mettre à jour le profil (Username, Email ou Mot de passe)
+router.put('/update-profile', async (req, res) => {
+  try {
+    const { token, newUsername, newEmail, newPassword } = req.body;
+
+    if (!token) {
+      return res.json({ result: false, error: 'Token manquant' });
+    }
+
+    const user = await User.findOne({ token: token });
+    if (!user) {
+      return res.json({ result: false, error: 'Utilisateur introuvable' });
+    }
+
+    let updates = {};
+    if (newUsername) updates.username = newUsername;
+    if (newEmail) updates.email = newEmail;
+    
+    // Si l'utilisateur veut changer son mot de passe, on le crypte d'abord !
+    if (newPassword) {
+      const hash = bcrypt.hashSync(newPassword, 10); // 10 est le "salt" standard
+      updates.password = hash;
+    }
+
+    // On applique les modifications
+    await User.updateOne({ token: token }, { $set: updates });
+
+    res.json({ result: true, message: 'Profil mis à jour avec succès' });
+
+  } catch (error) {
+    console.error("Erreur update profil:", error);
+    res.json({ result: false, error: 'Erreur serveur' });
+  }
+});
+
+// ROUTE : Supprimer le compte définitivement
+router.delete('/delete-account', async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.json({ result: false, error: 'Token manquant' });
+    }
+
+    const deletedUser = await User.deleteOne({ token: token });
+
+    if (deletedUser.deletedCount > 0) {
+      res.json({ result: true, message: 'Compte supprimé avec succès' });
+    } else {
+      res.json({ result: false, error: 'Utilisateur introuvable ou déjà supprimé' });
+    }
+
+  } catch (error) {
+    console.error("Erreur suppression compte:", error);
+    res.json({ result: false, error: 'Erreur serveur' });
+  }
+});
+// ROUTE : Récupérer son code ami et sa liste d'amis
+router.post('/my-social-data', async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    const user = await User.findOne({ token: token }).populate('friends.userid', 'username friendCode');
+    if (!user) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    // Si pas de code, on en génère un
+    if (!user.friendCode) {
+      const generatedCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      user.friendCode = generatedCode;
+      await user.save();
+    }
+
+    res.json({ 
+      result: true, 
+      friendCode: user.friendCode,
+      friends: user.friends
+    });
+
+  } catch (error) {
+    console.error("Erreur récupération social:", error);
+    res.json({ result: false, error: 'Erreur serveur' });
+  }
+});
+// ROUTE : Ajouter un ami via son Friend Code
+router.post('/add-friend', async (req, res) => {
+  try {
+    const { token, friendCodeToAdd } = req.body;
+
+    const user = await User.findOne({ token: token });
+    if (!user) return res.json({ result: false, error: 'Utilisateur non trouvé' });
+
+    if (user.friendCode === friendCodeToAdd.toUpperCase()) {
+      return res.json({ result: false, error: 'Vous ne pouvez pas vous ajouter vous-même !' });
+    }
+
+    const friend = await User.findOne({ friendCode: friendCodeToAdd.toUpperCase() });
+    if (!friend) return res.json({ result: false, error: 'Code ami invalide' });
+
+    // On vérifie s'ils sont déjà amis en cherchant dans les objets du tableau
+    const alreadyFriends = user.friends.some(f => f.userid.toString() === friend._id.toString());
+    if (alreadyFriends) {
+      return res.json({ result: false, error: 'Vous êtes déjà amis avec cet utilisateur.' });
+    }
+
+    const friendObjForUser = { userid: friend._id, canSeeMyCollection: true, canAskForMovies: true };
+    const userObjForFriend = { userid: user._id, canSeeMyCollection: true, canAskForMovies: true };
+
+    await User.updateOne({ _id: user._id }, { $push: { friends: friendObjForUser } });
+    await User.updateOne({ _id: friend._id }, { $push: { friends: userObjForFriend } });
+
+    res.json({ result: true, message: `Vous êtes maintenant ami avec ${friend.username} !` });
+
+  } catch (error) {
+    console.error("Erreur ajout ami:", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+// ROUTE : Mettre à jour les permissions d'un ami
+router.put('/update-friend-permissions', async (req, res) => {
+  try {
+    const { token, friendId, canSeeMyCollection, canAskForMovies } = req.body;
+
+    if (!token || !friendId) {
+      return res.json({ result: false, error: 'Paramètres manquants' });
+    }
+
+    const updateResult = await User.updateOne(
+      { token: token, "friends.userid": friendId },
+      { 
+        $set: { 
+          "friends.$.canSeeMyCollection": canSeeMyCollection,
+          "friends.$.canAskForMovies": canAskForMovies 
+        } 
+      }
+    );
+
+    if (updateResult.modifiedCount > 0) {
+      res.json({ result: true, message: 'Permissions mises à jour avec succès !' });
+    } else {
+      res.json({ result: false, error: 'Ami non trouvé ou permissions inchangées.' });
+    }
+
+  } catch (error) {
+    console.error("Erreur mise à jour permissions:", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+//ROUTE récupération de la collection d'un ami
+router.post('/friend-collection', async (req, res) => {
+  try {
+    const { token, friendId } = req.body;
+    const me = await User.findOne({ token: token });
+    if (!me) return res.json({ result: false, error: 'Utilisateur non trouvé' });
+
+    const friend = await User.findById(friendId).populate('movies.movieid');
+    if (!friend) return res.json({ result: false, error: 'Ami introuvable' });
+
+    const myPermissions = friend.friends.find(f => f.userid.toString() === me._id.toString());
+
+    if (!myPermissions) {
+      return res.json({ result: false, error: 'Vous n\'êtes pas dans la liste d\'amis de cet utilisateur.' });
+    }
+
+    if (!myPermissions.canSeeMyCollection) {
+      return res.json({ result: false, error: 'Cet ami a restreint l\'accès à sa collection.' });
+    }
+
+    res.json({ result: true, movies: friend.movies });
+
+  } catch (error) {
+    console.error("Erreur récupération collection ami:", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
 module.exports = router;  
 
