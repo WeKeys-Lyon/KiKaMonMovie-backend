@@ -82,8 +82,25 @@ router.post('/signin', async (req, res) => {
           // 4.2 On prépare les données depuis userExists et on lance la fonction de formattage
         const userData = await userExists.populate({ path: 'movies.movieid', model: Movie});
         const userMovies = await getLocalMovies(userData);
+        // 4.3 On va préparer les amis
+        async function getLocalFriends(userData) {
+       
+        if (userData.friends) {
+          
+          const myResults = await Promise.all( userData.friends.map(async friend => {
+            /* let myMovies = {id: movie.movieid.tmdb_id} */
+            const friendData = await User.findOne({_id: friend.userid}, {username: 1});
+            return await friendData
+            }) )
+          console.log(await myResults)
+          return await myResults;
+              }
+            }
+          // 4.2 On prépare les données depuis userExists et on lance la fonction de formattage
+        
+        const userFriends = await getLocalFriends(userData);
         // 5. Sortie pour le reducer
-        res.status(200).send({result: true, answer: { username: userExists.username, email: userExists.email, token: userExists.token, movies:  userMovies }})
+        res.status(200).send({result: true, answer: { username: userExists.username, email: userExists.email, token: userExists.token, movies:  userMovies, friends: userFriends }})
     };
 
     } catch (error) {
