@@ -30,6 +30,17 @@ const userSchema = new mongoose.Schema({
             isLiked: {type: Boolean, required: true}
 
   }],
+  notifications: [{
+            type: {
+              type: String,
+              required: true,
+              enum: ['friend_request', 'loan_request', 'loan_reminder', 'loan_accepted']
+            },
+            senderId: {type: mongoose.Schema.Types.ObjectId, ref:'users', required: false},
+            movieId: {type: mongoose.Schema.Types.ObjectId, ref:'movies', required: false},
+            isRead: {type: Boolean, required: true, default: false}, 
+            createdAt: {type: Date, required: true, default: Date.now}
+}],
 });
 
 const User = mongoose.model('users', userSchema);
