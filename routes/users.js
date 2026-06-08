@@ -273,7 +273,28 @@ router.post('/add-loan', async (req, res) => {
           //On ajoute notre document newLoan dans pastLoans
           user.movies[movieIndex].pastLoans.push(newLoan);
           user.movies[movieIndex].isLoaned = true;
+          if (req.body.notificationId) {
+            user.notifications = user.notifications.filter(
+              n => n._id.toString() !== req.body.notificationId
+            );
+          }
+          if (req.body.userid) {
+            user.movies[movieIndex].isAsked = user.movies[movieIndex].isAsked.filter(
+              id => id.toString() !== req.body.userid.toString()
+            );
+          }
           await user.save();
+          if (req.body.userid && req.body.isSharedToUser) {
+            const friend = await User.findById(req.body.userid);
+            if (friend) {
+              friend.notifications.push({
+                type: 'loan_accepted',
+                senderId: user._id,
+                movieId: myID._id
+              });
+              await friend.save();
+            }
+          }
 
           res.status(200).send({result: true, answer: user.movies[movieIndex].pastLoans })
         } else {
@@ -342,9 +363,9 @@ router.put('/update-profile', async (req, res) => {
     if (newUsername) updates.username = newUsername;
     if (newEmail) updates.email = newEmail;
     
-    // Si l'utilisateur veut changer son mot de passe, on le crypte d'abord !
+    // Si l'utilisateur veut changer son mot de passe, on le crypte d'abord
     if (newPassword) {
-      const hash = bcrypt.hashSync(newPassword, 10); // 10 est le "salt" standard
+      const hash = bcrypt.hashSync(newPassword, 10);
       updates.password = hash;
     }
 
@@ -562,5 +583,84 @@ router.get('/notifications/:token', async (req, res) => {
     console.error("Erreur dans notifications :", error);  
     }
 })  
+
+// ROUTE : Refuser une demande de prêt
+router.post('/refuse-loan', async (req, res) => {
+  try {
+    const { token, tmdb_id, notificationId, requesterId } = req.body;
+
+    // 1. On récupère ton profil et on peuple tes films pour trouver le bon avec le tmdb_id
+    const me = await User.findOne({ token: token }).populate('movies.movieid');
+    if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    // 2. Nettoyage de ta boîte de réception (on supprime la notification)
+    me.notifications = me.notifications.filter(n => n._id.toString() !== notificationId);
+
+    // 3. Nettoyage de la liste d'attente du film
+    const myMovie = me.movies.find(m => m.movieid && m.movieid.tmdb_id === tmdb_id);
+    if (myMovie) {
+        myMovie.isAsked = myMovie.isAsked.filter(id => id.toString() !== requesterId);
+    }
+    await me.save(); // On sauvegarde tes modifications
+
+    // 4. Prévenir l'ami (envoi de la notification de refus)
+    const friend = await User.findById(requesterId);
+    if (friend && myMovie) {
+        friend.notifications.push({
+            type: 'loan_refused',
+            senderId: me._id,
+            movieId: myMovie.movieid._id
+        });
+        await friend.save();
+    }
+
+    res.json({ result: true, message: 'Demande refusée avec succès' });
+
+  } catch (error) {
+    console.error("Erreur lors du refus du prêt :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+// ROUTE : Supprimer une notification
+router.post('/delete-notification', async (req, res) => {
+  try {
+    const { token, notificationId } = req.body;
+    
+    const user = await User.findOne({ token: token });
+    if (!user) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    // On filtre le tableau pour garder toutes les notifications SAUF celle qu'on veut supprimer
+    user.notifications = user.notifications.filter(n => n._id.toString() !== notificationId);
+    
+    await user.save();
+    res.json({ result: true, message: 'Notification supprimée' });
+
+  } catch (error) {
+    console.error("Erreur lors de la suppression de la notification :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+// ROUTE : Marquer toutes les notifications comme lues
+router.post('/mark-all-read', async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    const user = await User.findOne({ token: token });
+    if (!user) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    // On passe isRead à true pour toutes les notifications
+    user.notifications.forEach(notification => {
+      notification.isRead = true;
+    });
+
+    await user.save();
+    res.json({ result: true, message: 'Toutes les notifications sont marquées comme lues' });
+
+  } catch (error) {
+    console.error("Erreur mark-all-read :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
 module.exports = router;  
 
