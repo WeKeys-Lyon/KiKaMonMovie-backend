@@ -516,10 +516,10 @@ router.post('/ask-movie', async (req, res) => {
     if (alreadyAsked) {
       return res.json({ result: false, error: 'Vous avez déjà demandé ce film !' });
     }
-
+   
     await User.updateOne(
       { _id: friend._id, "movies._id": movieToAsk._id },
-      { $push: { "movies.$.isAsked": me._id, "notifications": { type: 'loan_request', senderId: me._id, movieId: movieToAsk._id }}}
+      { $push: { "movies.$.isAsked": me._id, "notifications": { type: 'loan_request', senderId: me._id, movieId: movieToAsk.movieid._id }}}
     );
 
     res.json({ result: true, message: 'Votre demande a bien été envoyée à votre ami !' });
@@ -533,7 +533,9 @@ router.post('/ask-movie', async (req, res) => {
 // Route: recevoir les notifications
 router.get('/notifications/:token', async (req, res) => {
   try {
-    const me = await User.findOne({ token: token }).populate('notifications.senderId', 'username friendCode').populate('notifications.movieId', 'title-fr original_title poster_path tmdb_id')
+    console.log("Appel reçu pour les notifs")
+    const token = req.params.token;
+    const me = await User.findOne({ token: token }).populate('notifications.senderId', 'username friendCode').populate('notifications.movieId', 'title_fr original_title poster_path tmdb_id')
     if (!me) {
       return res.json ({ result: false, error: 'utilisateur non trouvé' });
     }
