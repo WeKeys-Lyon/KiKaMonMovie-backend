@@ -561,6 +561,34 @@ router.get('/notifications/:token', async (req, res) => {
   } catch (error) {
     console.error("Erreur dans notifications :", error);  
     }
-})  
+});
+
+router.post('/isLiked', async (req, res) => {
+  if (!checkBody(req.body, ['token', 'tmdb_id'])) {
+      res.status(400).send({result: false, answer : 'Missing parameters'});
+      return;
+  }
+  try {
+    const user = await User.findOne({token: req.body.token});
+    const myID = await Movie.findOne({tmdb_id: req.body.tmdb_id}).select('_id');    
+    if (user) {
+        //On va chercher dans quel index de movies se trouve le film séléctionné
+        const movieIndex = user.movies.findIndex(movie => movie.movieid.toString() == myID._id);
+        if (movieIndex !== -1) {
+          //On ajoute notre document newLoan dans pastLoans
+          (user.movies[movieIndex].isLiked) ? user.movies[movieIndex].isLiked = false : user.movies[movieIndex].isLiked = true;
+          await user.save();
+
+          res.status(200).send({result: true, answer: user.movies[movieIndex].isLiked })
+        } else {
+          res.status(200).send({result: false, error: 'Film introuvable' });
+        }
+      } else {
+        res.status(200).send({result: false, error: 'Utilisateur introuvable' })
+      }
+  } catch (error) {
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+})
 module.exports = router;  
 
