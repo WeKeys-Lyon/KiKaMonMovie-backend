@@ -5,10 +5,11 @@ const userSchema = new mongoose.Schema({
   password: {type: String, required: true, unique: false},
   email: {type: String, required: true, unique: true},
   token: {type: String, required: true, unique: true},
+  friendCode: {type: String, unique: true, sparse: true},
   friends: [{ 
             userid: {type: mongoose.Schema.Types.ObjectId, ref:'users'}, 
-            canSeeMyCollection: {type: Boolean, required: true}, 
-            canAskForMovies: {type: Boolean, required: true} 
+            canSeeMyCollection: {type: Boolean, required: true, default: true}, 
+            canAskForMovies: {type: Boolean, required: true, defaut: true} 
         }],
   movies: [{
             movieid: {type: mongoose.Schema.Types.ObjectId, ref:'movies'},
@@ -29,6 +30,17 @@ const userSchema = new mongoose.Schema({
             isLiked: {type: Boolean, required: true}
 
   }],
+  notifications: [{
+            type: {
+              type: String,
+              required: true,
+              enum: ['friend_request', 'loan_request', 'loan_reminder', 'loan_accepted']
+            },
+            senderId: {type: mongoose.Schema.Types.ObjectId, ref:'users', required: false},
+            movieId: {type: mongoose.Schema.Types.ObjectId, ref:'movies', required: false},
+            isRead: {type: Boolean, required: true, default: false}, 
+            createdAt: {type: Date, required: true, default: Date.now}
+}],
 });
 
 const User = mongoose.model('users', userSchema);

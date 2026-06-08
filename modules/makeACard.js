@@ -59,44 +59,57 @@ function makeACard(api_data) {
 }
 
 async function getMovieTreated(moviedata) {
-            // Si le data.results[i].id match avec le tmdb_id, alors on skip les appels API pour prendre les données Mongoose.
-            const getMyMovieOffline = await Movie.findOne({tmdb_id: moviedata.movieid.tmdb_id})
-              .populate('DirectedBy.directorid')
-              .populate('Cast.actorid')
-              .populate('Genres.genreid')
-              .populate('MusicBy.composerid');
+    // 🛡️ BOUCLIER 1 : Si on nous envoie du vide, on annule.
+    if (!moviedata) return null;
 
-            if (getMyMovieOffline) {
-              const formattedOfflineMovie = {
-                tmdb_id: getMyMovieOffline.tmdb_id,
-                original_title: getMyMovieOffline.original_title,
-                title_fr: getMyMovieOffline.title_fr,
-                release_date: getMyMovieOffline.release_date ? new Date(getMyMovieOffline.release_date).toISOString().split('T')[0] : '',
-                poster_path: getMyMovieOffline.poster_path,
-                DirectedBy: getMyMovieOffline.DirectedBy.map(director => ({
-                  name: director.directorid?.name, popularity: director.directorid?.popularity })),
-                Cast: getMyMovieOffline.Cast.map(actor => ({
-                  name: actor.actorid?.name, popularity: actor.actorid?.popularity })),
-                Genres: getMyMovieOffline.Genres.map(genre => ({
-                  name: genre.genreid?.name })),
-                MusicBy: getMyMovieOffline.MusicBy.map(composer => ({
-                  name: composer.composerid?.name, popularity: composer.composerid?.popularity })),
-                isLoaned: moviedata.isLoaned,
-                isLiked: moviedata.isLiked,
-                pastLoans: moviedata.pastLoans
-              };
-              return formattedOfflineMovie;            
-            } else {
-              const moreInfosURL = `${base_API}3/movie/${moviedata.id}?append_to_response=credits,translations`;
-              const newResponse = await fetch(encodeURI(moreInfosURL), options_get);
-              let moreInfos = await newResponse.json();
+    // 💡 L'ASTUCE EST ICI : On récupère l'ID selon d'où vient la donnée (BDD ou TMDB)
+    const targetId = moviedata.movieid?.tmdb_id || moviedata.id;
 
-              // On exclus tous les films qui ne sont pas sortis (exemple Toy Story 6 - id 1689447)
-              if(moreInfos.status == "Released") {
-                //Mise en forme pour la BDD
-                return (makeACard(moreInfos))
-              }
-          
-            }            
+    // 🛡️ BOUCLIER 2 : Si au final on n'a aucun ID valide, on annule.
+    if (!targetId) return null;
+
+    // On cherche d'abord dans notre base de données "Offline"
+    const getMyMovieOffline = await Movie.findOne({ tmdb_id: targetId })
+        .populate('DirectedBy.directorid')
+        .populate('Cast.actorid')
+        .populate('Genres.genreid')
+        .populate('MusicBy.composerid');
+
+    if (getMyMovieOffline) {
+        const formattedOfflineMovie = {
+            tmdb_id: getMyMovieOffline.tmdb_id,
+            original_title: getMyMovieOffline.original_title,
+            title_fr: getMyMovieOffline.title_fr,
+            release_date: getMyMovieOffline.release_date ? new Date(getMyMovieOffline.release_date).toISOString().split('T')[0] : '',
+            poster_path: getMyMovieOffline.poster_path,
+            DirectedBy: getMyMovieOffline.DirectedBy.map(director => ({
+                name: director.directorid?.name, popularity: director.directorid?.popularity 
+            })),
+            Cast: getMyMovieOffline.Cast.map(actor => ({
+                name: actor.actorid?.name, popularity: actor.actorid?.popularity 
+            })),
+            Genres: getMyMovieOffline.Genres.map(genre => ({
+                name: genre.genreid?.name 
+            })),
+            MusicBy: getMyMovieOffline.MusicBy.map(composer => ({
+                name: composer.composerid?.name, popularity: composer.composerid?.popularity 
+            })),
+            isLoaned: moviedata.isLoaned || false,
+            isLiked: moviedata.isLiked || false,
+            pastLoans: moviedata.pastLoans || []
+        };
+        return formattedOfflineMovie;            
+    } else {
+        
+        const moreInfosURL = `${base_API}3/movie/${targetId}?append_to_response=credits,translations`;
+        const newResponse = await fetch(encodeURI(moreInfosURL), options_get);
+        let moreInfos = await newResponse.json();
+
+        if (moreInfos.status == "Released") {
+    
+            return (makeACard(moreInfos));
         }
+        return null; 
+    }            
+}
 module.exports = { makeACard, getMovieTreated };

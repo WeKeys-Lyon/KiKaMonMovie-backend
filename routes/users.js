@@ -32,14 +32,16 @@ router.post('/signup', async (req, res) => {
     }
     const passwordHash = bcrypt.hashSync(req.body.password, 10);
     const token = uid2(32);
+    const generatedCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     const newUser = new User({
         username: req.body.username,
         password: passwordHash,
         email: req.body.email,
-        token: token
+        token: token,
+        friendCode: generatedCode
     });
     await newUser.save();
-    res.status(201).send({result: true, answer : {username: newUser.username, email: newUser.email, token: newUser.token, movies: newUser.movies || []}});
+    res.status(201).send({result: true, answer : {username: newUser.username, email: newUser.email, token: newUser.token, movies: newUser.movies, friendCode: newUser.friendCode || []}});
 }),
 
 router.post('/signin', async (req, res) => {
@@ -80,8 +82,25 @@ router.post('/signin', async (req, res) => {
           // 4.2 On prépare les données depuis userExists et on lance la fonction de formattage
         const userData = await userExists.populate({ path: 'movies.movieid', model: Movie});
         const userMovies = await getLocalMovies(userData);
+        // 4.3 On va préparer les amis
+        async function getLocalFriends(userData) {
+       
+        if (userData.friends) {
+          
+          const myResults = await Promise.all( userData.friends.map(async friend => {
+            /* let myMovies = {id: movie.movieid.tmdb_id} */
+            const friendData = await User.findOne({_id: friend.userid}, {username: 1});
+            return await friendData
+            }) )
+          console.log(await myResults)
+          return await myResults;
+              }
+            }
+          // 4.2 On prépare les données depuis userExists et on lance la fonction de formattage
+        
+        const userFriends = await getLocalFriends(userData);
         // 5. Sortie pour le reducer
-        res.status(200).send({result: true, answer: { username: userExists.username, email: userExists.email, token: userExists.token, movies:  userMovies }})
+        res.status(200).send({result: true, answer: { username: userExists.username, email: userExists.email, token: userExists.token, movies:  userMovies, friends: userFriends }})
     };
 
     } catch (error) {
@@ -104,50 +123,50 @@ router.post('/add-movie', async (req, res) => {
     // 2. Vérifier si le film existe déjà dans la BDD Globale
     let existingMovie = await Movie.findOne({ tmdb_id: movie.tmdb_id });
 
-    // 3. SI LE FILM N'EXISTE PAS : On peuple les collections
+    // 3. SI LE FILM N'EXISTE PAS : On peuple les collections avec upsert
     if (!existingMovie) {
       
       // -- GESTION DES RÉALISATEURS --
       const directorsIds = [];
       for (const directorData of (movie.DirectedBy || [])) {
-        let director = await Director.findOne({ tmdb_director_id: directorData.tmdb_director_id });
-        if (!director) {
-          director = new Director({ name: directorData.name, tmdb_director_id: directorData.tmdb_director_id, popularity: directorData.popularity });
-          await director.save();
-        }
+        const director = await Director.findOneAndUpdate(
+          { tmdb_director_id: directorData.tmdb_director_id }, // Recherche
+          { name: directorData.name, popularity: directorData.popularity }, // Mise à jour
+          { returnDocument: 'after', upsert: true } // Création si inexistant
+        );
         directorsIds.push({ directorid: director._id });
       }
 
       // -- GESTION DU CASTING --
       const actorsIds = [];
       for (const actorData of (movie.Cast || [])) {
-        let castMember = await Cast.findOne({ tmdb_actor_id: actorData.tmdb_actor_id });
-        if (!castMember) {
-          castMember = new Cast({ name: actorData.name, tmdb_actor_id: actorData.tmdb_actor_id, popularity: actorData.popularity });
-          await castMember.save();
-        }
+        const castMember = await Cast.findOneAndUpdate(
+          { tmdb_actor_id: actorData.tmdb_actor_id },
+          { name: actorData.name, popularity: actorData.popularity },
+          { returnDocument: 'after', upsert: true }
+        );
         actorsIds.push({ actorid: castMember._id }); 
       }
 
-      // -- GESTION DES GENRES (👈 CORRECTION : Genres au lieu de genre) --
+      // -- GESTION DES GENRES --
       const genresIds = [];
       for (const genreData of (movie.Genres || [])) { 
-        let genre = await Genre.findOne({ tmdb_genre_id: genreData.tmdb_genre_id });
-        if (!genre) {
-          genre = new Genre({ name: genreData.name, tmdb_genre_id: genreData.tmdb_genre_id });
-          await genre.save();
-        }
+        const genre = await Genre.findOneAndUpdate(
+          { tmdb_genre_id: genreData.tmdb_genre_id },
+          { name: genreData.name }, // Les genres n'ont généralement pas de popularité
+          { returnDocument: 'after', upsert: true }
+        );
         genresIds.push({ genreid: genre._id });
       }
 
       // -- GESTION DES COMPOSITEURS --
       const composersIds = [];
       for (const composerData of (movie.MusicBy || [])) {
-        let composer = await Composer.findOne({ tmdb_composer_id: composerData.tmdb_composer_id});
-        if (!composer) {
-          composer = new Composer({ name: composerData.name, tmdb_composer_id: composerData.tmdb_composer_id, popularity: composerData.popularity });
-          await composer.save();
-        }
+        const composer = await Composer.findOneAndUpdate(
+          { tmdb_composer_id: composerData.tmdb_composer_id },
+          { name: composerData.name, popularity: composerData.popularity },
+          { returnDocument: 'after', upsert: true }
+        );
         composersIds.push({ composerid: composer._id });
       }
 
@@ -169,7 +188,6 @@ router.post('/add-movie', async (req, res) => {
     }
 
     // 4. Vérifier si le film est DÉJÀ dans la collection de L'UTILISATEUR
-    // 👈 CORRECTION : On cible bien "m.movieid" pour la comparaison
     const isAlreadyInCollection = user.movies.some(
       (m) => m.movieid && m.movieid.toString() === existingMovie._id.toString()
     );
@@ -182,7 +200,7 @@ router.post('/add-movie', async (req, res) => {
     user.movies.push({
       movieid: existingMovie._id,
       isLoaned: false,
-      isLiked: false // 👈 CORRECTION : On ajoute isLiked car c'est "required: true" dans ton modèle !
+      isLiked: false 
     });
     await user.save();
 
@@ -306,5 +324,243 @@ router.post('/remove-loan', async (req,res) => {
   }
 
 })
+// ROUTE : Mettre à jour le profil (Username, Email ou Mot de passe)
+router.put('/update-profile', async (req, res) => {
+  try {
+    const { token, newUsername, newEmail, newPassword } = req.body;
+
+    if (!token) {
+      return res.json({ result: false, error: 'Token manquant' });
+    }
+
+    const user = await User.findOne({ token: token });
+    if (!user) {
+      return res.json({ result: false, error: 'Utilisateur introuvable' });
+    }
+
+    let updates = {};
+    if (newUsername) updates.username = newUsername;
+    if (newEmail) updates.email = newEmail;
+    
+    // Si l'utilisateur veut changer son mot de passe, on le crypte d'abord !
+    if (newPassword) {
+      const hash = bcrypt.hashSync(newPassword, 10); // 10 est le "salt" standard
+      updates.password = hash;
+    }
+
+    // On applique les modifications
+    await User.updateOne({ token: token }, { $set: updates });
+
+    res.json({ result: true, message: 'Profil mis à jour avec succès' });
+
+  } catch (error) {
+    console.error("Erreur update profil:", error);
+    res.json({ result: false, error: 'Erreur serveur' });
+  }
+});
+
+// ROUTE : Supprimer le compte définitivement
+router.delete('/delete-account', async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.json({ result: false, error: 'Token manquant' });
+    }
+
+    const deletedUser = await User.deleteOne({ token: token });
+
+    if (deletedUser.deletedCount > 0) {
+      res.json({ result: true, message: 'Compte supprimé avec succès' });
+    } else {
+      res.json({ result: false, error: 'Utilisateur introuvable ou déjà supprimé' });
+    }
+
+  } catch (error) {
+    console.error("Erreur suppression compte:", error);
+    res.json({ result: false, error: 'Erreur serveur' });
+  }
+});
+// ROUTE : Récupérer son code ami et sa liste d'amis
+router.post('/my-social-data', async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    const user = await User.findOne({ token: token }).populate('friends.userid', 'username friendCode');
+    if (!user) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    res.json({ 
+      result: true, 
+      friendCode: user.friendCode,
+      friends: user.friends
+    });
+
+  } catch (error) {
+    console.error("Erreur récupération social:", error);
+    res.json({ result: false, error: 'Erreur serveur' });
+  }
+});
+// ROUTE : Ajouter un ami via son Friend Code
+router.post('/add-friend', async (req, res) => {
+  try {
+    const { token, friendCodeToAdd } = req.body;
+
+    const user = await User.findOne({ token: token });
+    if (!user) return res.json({ result: false, error: 'Utilisateur non trouvé' });
+
+    if (user.friendCode === friendCodeToAdd.toUpperCase()) {
+      return res.json({ result: false, error: 'Vous ne pouvez pas vous ajouter vous-même !' });
+    }
+
+    const friend = await User.findOne({ friendCode: friendCodeToAdd.toUpperCase() });
+    if (!friend) return res.json({ result: false, error: 'Code ami invalide' });
+
+    // On vérifie s'ils sont déjà amis en cherchant dans les objets du tableau
+    const alreadyFriends = user.friends.some(f => f.userid.toString() === friend._id.toString());
+    if (alreadyFriends) {
+      return res.json({ result: false, error: 'Vous êtes déjà amis avec cet utilisateur.' });
+    }
+
+    const friendObjForUser = { userid: friend._id, canSeeMyCollection: true, canAskForMovies: true };
+    const userObjForFriend = { userid: user._id, canSeeMyCollection: true, canAskForMovies: true };
+
+    await User.updateOne({ _id: user._id }, { $push: { friends: friendObjForUser } });
+    await User.updateOne({ _id: friend._id }, { $push: { friends: userObjForFriend } });
+
+    res.json({ result: true, message: `Vous êtes maintenant ami avec ${friend.username} !` });
+
+  } catch (error) {
+    console.error("Erreur ajout ami:", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+// ROUTE : Mettre à jour les permissions d'un ami
+router.put('/update-friend-permissions', async (req, res) => {
+  try {
+    const { token, friendId, canSeeMyCollection, canAskForMovies } = req.body;
+
+    if (!token || !friendId) {
+      return res.json({ result: false, error: 'Paramètres manquants' });
+    }
+
+    const updateResult = await User.updateOne(
+      { token: token, "friends.userid": friendId },
+      { 
+        $set: { 
+          "friends.$.canSeeMyCollection": canSeeMyCollection,
+          "friends.$.canAskForMovies": canAskForMovies 
+        } 
+      }
+    );
+
+    if (updateResult.modifiedCount > 0) {
+      res.json({ result: true, message: 'Permissions mises à jour avec succès !' });
+    } else {
+      res.json({ result: false, error: 'Ami non trouvé ou permissions inchangées.' });
+    }
+
+  } catch (error) {
+    console.error("Erreur mise à jour permissions:", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+
+// ROUTE : Récupérer la collection d'un ami (si autorisé)
+router.post('/friend-collection', async (req, res) => {
+  try {
+    const { token, friendId } = req.body;
+
+    const me = await User.findOne({ token: token });
+    if (!me) return res.json({ result: false, error: 'Utilisateur non trouvé' });
+
+    const friend = await User.findById(friendId).populate('movies.movieid');
+    if (!friend) return res.json({ result: false, error: 'Ami introuvable' });
+
+    const myPermissions = friend.friends.find(f => f.userid.toString() === me._id.toString());
+    if (!myPermissions || !myPermissions.canSeeMyCollection) {
+      return res.json({ result: false, error: 'Cet ami a restreint l\'accès à sa collection.' });
+    }
+    const formattedMovies = await Promise.all(
+      friend.movies.map(async (movieObj) => {
+        return await getMovieTreated(movieObj);
+      })
+    );
+
+    const finalMovies = formattedMovies.filter(m => m !== null);
+
+    res.json({ result: true, movies: finalMovies });
+
+  } catch (error) {
+    console.error("Erreur récupération collection ami:", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+// ROUTE : Demander à emprunter un film
+router.post('/ask-movie', async (req, res) => {
+  try {
+    const { token, friendId, tmdb_id } = req.body;
+
+    // Sécurité : on vérifie que l'ID n'est pas vide
+    if (!tmdb_id) return res.json({ result: false, error: 'ID du film manquant' });
+
+    const me = await User.findOne({ token: token });
+    if (!me) return res.json({ result: false, error: 'Utilisateur non trouvé' });
+
+    // 1. On peuple directement les films de l'ami pour y voir clair
+    const friend = await User.findById(friendId).populate('movies.movieid');
+    if (!friend) return res.json({ result: false, error: 'Ami introuvable' });
+
+    // 2. Vérification de tes droits
+    const myPermissions = friend.friends.find(f => f.userid.toString() === me._id.toString());
+    if (!myPermissions || !myPermissions.canAskForMovies) {
+      return res.json({ result: false, error: 'Cet ami ne vous autorise pas à lui demander des films.' });
+    }
+
+   
+    const movieToAsk = friend.movies.find(m => m.movieid && m.movieid.tmdb_id == tmdb_id);
+
+    if (!movieToAsk) {
+      return res.json({ result: false, error: 'Ce film n\'est plus dans sa collection.' });
+    }
+    if (movieToAsk.isLoaned) {
+      return res.json({ result: false, error: 'Impossible : ce film est déjà en cours de prêt.' });
+    }
+
+    // 4. On vérifie si tu n'es pas déjà dans le tableau isAsked
+    const alreadyAsked = movieToAsk.isAsked.some(id => id.toString() === me._id.toString());
+    if (alreadyAsked) {
+      return res.json({ result: false, error: 'Vous avez déjà demandé ce film !' });
+    }
+   
+    await User.updateOne(
+      { _id: friend._id, "movies._id": movieToAsk._id },
+      { $push: { "movies.$.isAsked": me._id, "notifications": { type: 'loan_request', senderId: me._id, movieId: movieToAsk.movieid._id }}}
+    );
+
+    res.json({ result: true, message: 'Votre demande a bien été envoyée à votre ami !' });
+
+  } catch (error) {
+    console.error("Erreur demande film:", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+// Route: recevoir les notifications
+router.get('/notifications/:token', async (req, res) => {
+  try {
+    console.log("Appel reçu pour les notifs")
+    const token = req.params.token;
+    const me = await User.findOne({ token: token }).populate('notifications.senderId', 'username friendCode').populate('notifications.movieId', 'title_fr original_title poster_path tmdb_id')
+    if (!me) {
+      return res.json ({ result: false, error: 'utilisateur non trouvé' });
+    }
+    const sortedNotifications = me.notifications.sort((a, b) => b.createdAt - a.createdAt);
+    res.json({ result: true, notifications: sortedNotifications });
+  } catch (error) {
+    console.error("Erreur dans notifications :", error);  
+    }
+})  
 module.exports = router;  
 
