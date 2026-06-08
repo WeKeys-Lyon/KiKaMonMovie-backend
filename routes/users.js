@@ -436,19 +436,28 @@ router.post('/add-friend', async (req, res) => {
     const friend = await User.findOne({ friendCode: friendCodeToAdd.toUpperCase() });
     if (!friend) return res.json({ result: false, error: 'Code ami invalide' });
 
-    // On vérifie s'ils sont déjà amis en cherchant dans les objets du tableau
+    // 1. On vérifie s'ils sont déjà amis
     const alreadyFriends = user.friends.some(f => f.userid.toString() === friend._id.toString());
     if (alreadyFriends) {
       return res.json({ result: false, error: 'Vous êtes déjà amis avec cet utilisateur.' });
     }
 
-    const friendObjForUser = { userid: friend._id, canSeeMyCollection: true, canAskForMovies: true };
-    const userObjForFriend = { userid: user._id, canSeeMyCollection: true, canAskForMovies: true };
+    const alreadyRequested = friend.notifications.some(
+      n => n.type === 'friend_request' && n.senderId && n.senderId.toString() === user._id.toString()
+    );
+    if (alreadyRequested) {
+      return res.json({ result: false, error: 'Une demande est déjà en attente pour cet utilisateur.' });
+    }
 
-    await User.updateOne({ _id: user._id }, { $push: { friends: friendObjForUser } });
-    await User.updateOne({ _id: friend._id }, { $push: { friends: userObjForFriend } });
+    //On pousse juste la notification chez l'ami
+    friend.notifications.push({
+      type: 'friend_request',
+      senderId: user._id
+    });
 
-    res.json({ result: true, message: `Vous êtes maintenant ami avec ${friend.username} !` });
+    await friend.save(); // On sauvegarde l'envoi de la notification
+
+    res.json({ result: true, message: `Votre demande d'ami a bien été envoyée à ${friend.username} !` });
 
   } catch (error) {
     console.error("Erreur ajout ami:", error);
@@ -659,6 +668,74 @@ router.post('/mark-all-read', async (req, res) => {
 
   } catch (error) {
     console.error("Erreur mark-all-read :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+// route pour accepter un ami
+router.post('/accept-friend', async (req, res) => {
+  try {
+    const { token, notificationId, senderId } = req.body;
+
+    // 1. On cherche les deux utilisateurs
+    const me = await User.findOne({ token: token });
+    const friend = await User.findById(senderId);
+
+    if (!me || !friend) {
+      return res.json({ result: false, error: 'Utilisateur introuvable' });
+    }
+
+    // 2. On vérifie s'ils ne sont pas déjà amis (sécurité)
+    const alreadyFriends = me.friends.some(f => f.userid.toString() === senderId.toString());
+    
+    if (!alreadyFriends) {
+      // 3. On ajoute l'ami chez moi avec les permissions par défaut
+      me.friends.push({
+        userid: friend._id,
+        canSeeMyCollection: true,
+        canAskForMovies: true
+      });
+
+      // 4. On m'ajoute chez l'ami avec les permissions par défaut (réciproque)
+      friend.friends.push({
+        userid: me._id,
+        canSeeMyCollection: true,
+        canAskForMovies: true
+      });
+      
+      await friend.save(); // On sauvegarde les modifications chez l'ami
+    }
+
+    // 5. On supprime la notification de demande
+    me.notifications = me.notifications.filter(n => n._id.toString() !== notificationId);
+    await me.save(); // On sauvegarde mes modifications
+
+    res.json({ result: true, message: 'Ami ajouté avec succès !' });
+
+  } catch (error) {
+    console.error("Erreur accept-friend :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+//refuser un ami
+router.post('/refuse-friend', async (req, res) => {
+  try {
+    const { token, notificationId } = req.body;
+
+    const me = await User.findOne({ token: token });
+    if (!me) {
+      return res.json({ result: false, error: 'Utilisateur introuvable' });
+    }
+
+    // On se contente de supprimer la notification de la liste
+    me.notifications = me.notifications.filter(n => n._id.toString() !== notificationId);
+    
+    await me.save();
+    
+    res.json({ result: true, message: 'Demande refusée et supprimée.' });
+
+  } catch (error) {
+    console.error("Erreur refuse-friend :", error);
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
