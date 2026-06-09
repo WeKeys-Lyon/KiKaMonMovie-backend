@@ -577,21 +577,70 @@ router.post('/ask-movie', async (req, res) => {
   }
 });
 
-// Route: recevoir les notifications
+// Route: recevoir les notifications et vérifier les dates de fin de pre^t
 router.get('/notifications/:token', async (req, res) => {
   try {
-    console.log("Appel reçu pour les notifs")
     const token = req.params.token;
-    const me = await User.findOne({ token: token }).populate('notifications.senderId', 'username friendCode').populate('notifications.movieId', 'title_fr original_title poster_path tmdb_id')
+    
+    const me = await User.findOne({ token: token })
+      .populate('movies.movieid') 
+      .populate('notifications.senderId', 'username friendCode')
+      .populate('notifications.movieId', 'title_fr original_title poster_path tmdb_id');
+      
     if (!me) {
-      return res.json ({ result: false, error: 'utilisateur non trouvé' });
+      return res.json({ result: false, error: 'utilisateur non trouvé' });
     }
+
+    // VÉRIFICATION DES RETARDS 
+    const today = new Date();
+    let hasNewNotifications = false;
+
+    me.movies.forEach(myMovie => {
+      // Si le film est prêté actuellement
+      if (myMovie.isLoaned && myMovie.pastLoans && myMovie.pastLoans.length > 0) {
+        const currentLoan = myMovie.pastLoans[myMovie.pastLoans.length - 1];
+        
+        // Si la date est dépassée
+        if (currentLoan.dueDate && new Date(currentLoan.dueDate) < today) {
+          
+          // On vérifie qu'on n'a pas déjà généré cette notification pour ce film
+          const alreadyNotified = me.notifications.some(n => 
+            n.type === 'loan_expired' && 
+            n.movieId && n.movieId._id.toString() === myMovie.movieid._id.toString()
+          );
+
+          if (!alreadyNotified) {
+            me.notifications.push({
+              type: 'loan_expired',
+              movieId: myMovie.movieid._id,
+              senderId: currentLoan.userid // Pour savoir à qui on a prêté
+            });
+            hasNewNotifications = true;
+          }
+        }
+      }
+    });
+
+    // Si on a ajouté de nouvelles notifications, on sauvegarde et on les peuple
+    if (hasNewNotifications) {
+      await me.save();
+      await me.populate([
+        { path: 'notifications.senderId', select: 'username friendCode' },
+        { path: 'notifications.movieId', select: 'title_fr original_title poster_path tmdb_id' }
+      ]);
+    }
+  
+
+    // tri exact pour afficher les plus récentes en premier
     const sortedNotifications = me.notifications.sort((a, b) => b.createdAt - a.createdAt);
+    
     res.json({ result: true, notifications: sortedNotifications });
+    
   } catch (error) {
-    console.error("Erreur dans notifications :", error);  
-    }
-})  
+    console.error("Erreur dans notifications :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' }); 
+  }
+});
 
 // ROUTE : Refuser une demande de prêt
 router.post('/refuse-loan', async (req, res) => {
@@ -739,5 +788,45 @@ router.post('/refuse-friend', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
+
+// ROUTE : Envoyer un rappel à un emprunteur
+router.post('/remind-loan', async (req, res) => {
+  try {
+    const { token, borrowerId, movieId } = req.body;
+
+    const me = await User.findOne({ token: token });
+    const friend = await User.findById(borrowerId);
+
+    if (!me || !friend) {
+      return res.json({ result: false, error: 'Utilisateur introuvable' });
+    }
+
+    // Sécurité Anti-Spam : On vérifie si l'ami a DÉJÀ un rappel non supprimé pour ce film
+    const alreadyReminded = friend.notifications.some(n => 
+      n.type === 'loan_reminder' && 
+      n.movieId && n.movieId.toString() === movieId.toString()
+    );
+
+    if (alreadyReminded) {
+      return res.json({ result: false, error: 'Un rappel a déjà été envoyé à cet utilisateur récemment.' });
+    }
+
+    // On crée la notification chez l'ami
+    friend.notifications.push({
+      type: 'loan_reminder',
+      senderId: me._id,
+      movieId: movieId
+    });
+
+    await friend.save();
+
+    res.json({ result: true, message: 'Un rappel a été envoyé à votre ami !' });
+
+  } catch (error) {
+    console.error("Erreur remind-loan :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
 module.exports = router;  
 

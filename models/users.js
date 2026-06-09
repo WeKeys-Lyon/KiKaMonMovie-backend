@@ -34,7 +34,7 @@ const userSchema = new mongoose.Schema({
             type: {
               type: String,
               required: true,
-              enum: ['friend_request', 'loan_request', 'loan_reminder', 'loan_accepted', 'loan_refused']
+              enum: ['friend_request', 'loan_request', 'loan_reminder', 'loan_accepted', 'loan_refused', 'loan_expired']
             },
             senderId: {type: mongoose.Schema.Types.ObjectId, ref:'users', required: false},
             movieId: {type: mongoose.Schema.Types.ObjectId, ref:'movies', required: false},
