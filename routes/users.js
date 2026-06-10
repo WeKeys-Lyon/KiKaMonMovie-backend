@@ -671,7 +671,6 @@ router.post('/isLiked', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 })
-})  
 
 // ROUTE : Refuser une demande de prêt
 router.post('/refuse-loan', async (req, res) => {
