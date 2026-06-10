@@ -11,6 +11,10 @@ const userSchema = new mongoose.Schema({
             canSeeMyCollection: {type: Boolean, required: true, default: true}, 
             canAskForMovies: {type: Boolean, required: true, defaut: true} 
         }],
+  pendingRequests: [{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'users'
+  }],
   movies: [{
             movieid: {type: mongoose.Schema.Types.ObjectId, ref:'movies'},
             ranking: {type: Number, required: false},
