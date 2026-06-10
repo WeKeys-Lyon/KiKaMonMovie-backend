@@ -102,7 +102,7 @@ router.post('/signin', async (req, res) => {
         
         const userFriends = await getLocalFriends(userData);
         // 5. Sortie pour le reducer
-        res.status(200).send({result: true, answer: { username: userExists.username, email: userExists.email, token: userExists.token, movies:  userMovies, friends: userFriends }})
+        res.status(200).send({result: true, answer: { username: userExists.username, email: userExists.email, token: userExists.token, movies:  userMovies, friends: userFriends, friendCode: userExists.friendCode, notifications: userExists.notifications }})
     };
 
     } catch (error) {
@@ -486,7 +486,7 @@ router.post('/add-friend', async (req, res) => {
     await user.save();
 
 
-    res.json({ result: true, message: `Votre demande d'ami a bien été envoyée à ${friend.username} !` });
+    res.json({ result: true, message: `Votre demande d'ami a bien été envoyée à ${friend.username} !`, answer: {_id: user._id, name: friend.username} });
 
   } catch (error) {
     console.error("Erreur ajout ami:", error);
