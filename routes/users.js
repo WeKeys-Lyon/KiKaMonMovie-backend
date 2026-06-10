@@ -431,13 +431,14 @@ router.post('/my-social-data', async (req, res) => {
   try {
     const { token } = req.body;
 
-    const user = await User.findOne({ token: token }).populate('friends.userid', 'username friendCode');
+    const user = await User.findOne({ token: token }).populate('friends.userid', 'username friendCode').populate('pendingRequests', 'username');
     if (!user) return res.json({ result: false, error: 'Utilisateur introuvable' });
 
     res.json({ 
       result: true, 
       friendCode: user.friendCode,
-      friends: user.friends
+      friends: user.friends,
+      pendingRequests: user.pendingRequests
     });
 
   } catch (error) {
@@ -480,6 +481,10 @@ router.post('/add-friend', async (req, res) => {
     });
 
     await friend.save(); // On sauvegarde l'envoi de la notification
+
+    user.pendingRequests.push(friend._id);
+    await user.save();
+
 
     res.json({ result: true, message: `Votre demande d'ami a bien été envoyée à ${friend.username} !` });
 
@@ -802,6 +807,15 @@ router.post('/accept-friend', async (req, res) => {
         canSeeMyCollection: true,
         canAskForMovies: true
       });
+
+      if (friend.pendingRequests) {
+        friend.pendingRequests = friend.pendingRequests.filter(id => id.toString() !== me._id.toString());
+      }
+
+      friend.notifications.push({
+        type: 'friend_accepted',
+        senderId: me._id // 
+      });
       
       await friend.save(); // On sauvegarde les modifications chez l'ami
     }
@@ -821,7 +835,7 @@ router.post('/accept-friend', async (req, res) => {
 //refuser un ami
 router.post('/refuse-friend', async (req, res) => {
   try {
-    const { token, notificationId } = req.body;
+    const { token, notificationId, senderId } = req.body;
 
     const me = await User.findOne({ token: token });
     if (!me) {
@@ -832,6 +846,18 @@ router.post('/refuse-friend', async (req, res) => {
     me.notifications = me.notifications.filter(n => n._id.toString() !== notificationId);
     
     await me.save();
+
+    if (senderId) {
+      const friend = await User.findById(senderId);
+      if (friend && friend.pendingRequests) {
+        friend.pendingRequests = friend.pendingRequests.filter(id => id.toString() !== me._id.toString());
+      }
+      friend.notifications.push({
+          type: 'friend_refused',
+          senderId: me._id 
+        });
+      await friend.save();
+    }
     
     res.json({ result: true, message: 'Demande refusée et supprimée.' });
 
@@ -876,6 +902,34 @@ router.post('/remind-loan', async (req, res) => {
 
   } catch (error) {
     console.error("Erreur remind-loan :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+// ROUTE : Supprimer un ami
+router.delete('/remove-friend', async (req, res) => {
+  try {
+    const { token, friendId } = req.body;
+
+    const me = await User.findOne({ token: token });
+    const friend = await User.findById(friendId);
+
+    if (!me || !friend) {
+      return res.json({ result: false, error: 'Utilisateur introuvable' });
+    }
+
+    // 1. On retire l'ami de ma liste
+    me.friends = me.friends.filter(f => f.userid.toString() !== friendId.toString());
+    await me.save();
+
+    // 2. On me retire de la liste de l'ami (réciproque)
+    friend.friends = friend.friends.filter(f => f.userid.toString() !== me._id.toString());
+    await friend.save();
+
+    res.json({ result: true, message: 'Ami supprimé avec succès.' });
+
+  } catch (error) {
+    console.error("Erreur remove-friend :", error);
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });

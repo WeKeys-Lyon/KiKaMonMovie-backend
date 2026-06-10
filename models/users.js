@@ -11,6 +11,10 @@ const userSchema = new mongoose.Schema({
             canSeeMyCollection: {type: Boolean, required: true, default: true}, 
             canAskForMovies: {type: Boolean, required: true, defaut: true} 
         }],
+  pendingRequests: [{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'users'
+  }],
   movies: [{
             movieid: {type: mongoose.Schema.Types.ObjectId, ref:'movies'},
             ranking: {type: Number, required: false},
@@ -34,7 +38,7 @@ const userSchema = new mongoose.Schema({
             type: {
               type: String,
               required: true,
-              enum: ['friend_request', 'loan_request', 'loan_reminder', 'loan_accepted', 'loan_refused', 'loan_expired']
+              enum: ['friend_request', 'friend_accepted', 'friend_refused', 'loan_request', 'loan_reminder', 'loan_accepted', 'loan_refused', 'loan_expired']
             },
             senderId: {type: mongoose.Schema.Types.ObjectId, ref:'users', required: false},
             movieId: {type: mongoose.Schema.Types.ObjectId, ref:'movies', required: false},
