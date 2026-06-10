@@ -94,7 +94,6 @@ router.post('/signin', async (req, res) => {
             const friendData = await User.findOne({_id: friend.userid}, {username: 1});
             return await friendData
             }) )
-          console.log(await myResults)
           return await myResults;
               }
             }
@@ -486,7 +485,7 @@ router.post('/add-friend', async (req, res) => {
     await user.save();
 
 
-    res.json({ result: true, message: `Votre demande d'ami a bien été envoyée à ${friend.username} !`, answer: {_id: user._id, name: friend.username} });
+    res.json({ result: true, message: `Votre demande d'ami a bien été envoyée à ${friend.username} !`, answer: {_id: friend._id, username: friend.username} });
 
   } catch (error) {
     console.error("Erreur ajout ami:", error);
