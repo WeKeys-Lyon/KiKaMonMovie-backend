@@ -404,6 +404,28 @@ router.delete('/delete-account', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur' });
   }
 });
+
+// ROUTE : Supprimer la collection définitivement
+router.delete('/user-collection', async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.json({ result: false, error: 'Token manquant' });
+    }
+
+    const user = await User.findOne({ token: token });
+
+    user.movies = [];
+    await user.save();
+
+    res.json({ result: true, answer: user });
+
+  } catch (error) {
+    console.error("Erreur suppression compte:", error);
+    res.json({ result: false, error: 'Erreur serveur' });
+  }
+});
 // ROUTE : Récupérer son code ami et sa liste d'amis
 router.post('/my-social-data', async (req, res) => {
   try {
