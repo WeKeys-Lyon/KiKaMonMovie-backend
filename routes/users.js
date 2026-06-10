@@ -438,19 +438,28 @@ router.post('/add-friend', async (req, res) => {
     const friend = await User.findOne({ friendCode: friendCodeToAdd.toUpperCase() });
     if (!friend) return res.json({ result: false, error: 'Code ami invalide' });
 
-    // On vérifie s'ils sont déjà amis en cherchant dans les objets du tableau
+    // 1. On vérifie s'ils sont déjà amis
     const alreadyFriends = user.friends.some(f => f.userid.toString() === friend._id.toString());
     if (alreadyFriends) {
       return res.json({ result: false, error: 'Vous êtes déjà amis avec cet utilisateur.' });
     }
 
-    const friendObjForUser = { userid: friend._id, canSeeMyCollection: true, canAskForMovies: true };
-    const userObjForFriend = { userid: user._id, canSeeMyCollection: true, canAskForMovies: true };
+    const alreadyRequested = friend.notifications.some(
+      n => n.type === 'friend_request' && n.senderId && n.senderId.toString() === user._id.toString()
+    );
+    if (alreadyRequested) {
+      return res.json({ result: false, error: 'Une demande est déjà en attente pour cet utilisateur.' });
+    }
 
-    await User.updateOne({ _id: user._id }, { $push: { friends: friendObjForUser } });
-    await User.updateOne({ _id: friend._id }, { $push: { friends: userObjForFriend } });
+    //On pousse juste la notification chez l'ami
+    friend.notifications.push({
+      type: 'friend_request',
+      senderId: user._id
+    });
 
-    res.json({ result: true, message: `Vous êtes maintenant ami avec ${friend.username} !` });
+    await friend.save(); // On sauvegarde l'envoi de la notification
+
+    res.json({ result: true, message: `Votre demande d'ami a bien été envoyée à ${friend.username} !` });
 
   } catch (error) {
     console.error("Erreur ajout ami:", error);
@@ -570,20 +579,69 @@ router.post('/ask-movie', async (req, res) => {
   }
 });
 
-// Route: recevoir les notifications
+// Route: recevoir les notifications et vérifier les dates de fin de pre^t
 router.get('/notifications/:token', async (req, res) => {
   try {
-    console.log("Appel reçu pour les notifs")
     const token = req.params.token;
-    const me = await User.findOne({ token: token }).populate('notifications.senderId', 'username friendCode').populate('notifications.movieId', 'title_fr original_title poster_path tmdb_id')
+    
+    const me = await User.findOne({ token: token })
+      .populate('movies.movieid') 
+      .populate('notifications.senderId', 'username friendCode')
+      .populate('notifications.movieId', 'title_fr original_title poster_path tmdb_id');
+      
     if (!me) {
-      return res.json ({ result: false, error: 'utilisateur non trouvé' });
+      return res.json({ result: false, error: 'utilisateur non trouvé' });
     }
+
+    // VÉRIFICATION DES RETARDS 
+    const today = new Date();
+    let hasNewNotifications = false;
+
+    me.movies.forEach(myMovie => {
+      // Si le film est prêté actuellement
+      if (myMovie.isLoaned && myMovie.pastLoans && myMovie.pastLoans.length > 0) {
+        const currentLoan = myMovie.pastLoans[myMovie.pastLoans.length - 1];
+        
+        // Si la date est dépassée
+        if (currentLoan.dueDate && new Date(currentLoan.dueDate) < today && currentLoan.Notification === true) {
+          
+          // On vérifie qu'on n'a pas déjà généré cette notification pour ce film
+          const alreadyNotified = me.notifications.some(n => 
+            n.type === 'loan_expired' && 
+            n.movieId && n.movieId._id.toString() === myMovie.movieid._id.toString()
+          );
+
+          if (!alreadyNotified) {
+            me.notifications.push({
+              type: 'loan_expired',
+              movieId: myMovie.movieid._id,
+              senderId: currentLoan.userid // Pour savoir à qui on a prêté
+            });
+            hasNewNotifications = true;
+          }
+        }
+      }
+    });
+
+    // Si on a ajouté de nouvelles notifications, on sauvegarde et on les peuple
+    if (hasNewNotifications) {
+      await me.save();
+      await me.populate([
+        { path: 'notifications.senderId', select: 'username friendCode' },
+        { path: 'notifications.movieId', select: 'title_fr original_title poster_path tmdb_id' }
+      ]);
+    }
+  
+
+    // tri exact pour afficher les plus récentes en premier
     const sortedNotifications = me.notifications.sort((a, b) => b.createdAt - a.createdAt);
+    
     res.json({ result: true, notifications: sortedNotifications });
+    
   } catch (error) {
-    console.error("Erreur dans notifications :", error);  
-    }
+    console.error("Erreur dans notifications :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' }); 
+  }
 });
 
 router.post('/isLiked', async (req, res) => {
@@ -693,5 +751,113 @@ router.post('/mark-all-read', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
+// route pour accepter un ami
+router.post('/accept-friend', async (req, res) => {
+  try {
+    const { token, notificationId, senderId } = req.body;
+
+    // 1. On cherche les deux utilisateurs
+    const me = await User.findOne({ token: token });
+    const friend = await User.findById(senderId);
+
+    if (!me || !friend) {
+      return res.json({ result: false, error: 'Utilisateur introuvable' });
+    }
+
+    // 2. On vérifie s'ils ne sont pas déjà amis (sécurité)
+    const alreadyFriends = me.friends.some(f => f.userid.toString() === senderId.toString());
+    
+    if (!alreadyFriends) {
+      // 3. On ajoute l'ami chez moi avec les permissions par défaut
+      me.friends.push({
+        userid: friend._id,
+        canSeeMyCollection: true,
+        canAskForMovies: true
+      });
+
+      // 4. On m'ajoute chez l'ami avec les permissions par défaut (réciproque)
+      friend.friends.push({
+        userid: me._id,
+        canSeeMyCollection: true,
+        canAskForMovies: true
+      });
+      
+      await friend.save(); // On sauvegarde les modifications chez l'ami
+    }
+
+    // 5. On supprime la notification de demande
+    me.notifications = me.notifications.filter(n => n._id.toString() !== notificationId);
+    await me.save(); // On sauvegarde mes modifications
+
+    res.json({ result: true, message: 'Ami ajouté avec succès !' });
+
+  } catch (error) {
+    console.error("Erreur accept-friend :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+//refuser un ami
+router.post('/refuse-friend', async (req, res) => {
+  try {
+    const { token, notificationId } = req.body;
+
+    const me = await User.findOne({ token: token });
+    if (!me) {
+      return res.json({ result: false, error: 'Utilisateur introuvable' });
+    }
+
+    // On se contente de supprimer la notification de la liste
+    me.notifications = me.notifications.filter(n => n._id.toString() !== notificationId);
+    
+    await me.save();
+    
+    res.json({ result: true, message: 'Demande refusée et supprimée.' });
+
+  } catch (error) {
+    console.error("Erreur refuse-friend :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+// ROUTE : Envoyer un rappel à un emprunteur
+router.post('/remind-loan', async (req, res) => {
+  try {
+    const { token, borrowerId, movieId } = req.body;
+
+    const me = await User.findOne({ token: token });
+    const friend = await User.findById(borrowerId);
+
+    if (!me || !friend) {
+      return res.json({ result: false, error: 'Utilisateur introuvable' });
+    }
+
+    // Sécurité Anti-Spam : On vérifie si l'ami a DÉJÀ un rappel non supprimé pour ce film
+    const alreadyReminded = friend.notifications.some(n => 
+      n.type === 'loan_reminder' && 
+      n.movieId && n.movieId.toString() === movieId.toString()
+    );
+
+    if (alreadyReminded) {
+      return res.json({ result: false, error: 'Un rappel a déjà été envoyé à cet utilisateur récemment.' });
+    }
+
+    // On crée la notification chez l'ami
+    friend.notifications.push({
+      type: 'loan_reminder',
+      senderId: me._id,
+      movieId: movieId
+    });
+
+    await friend.save();
+
+    res.json({ result: true, message: 'Un rappel a été envoyé à votre ami !' });
+
+  } catch (error) {
+    console.error("Erreur remind-loan :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
 module.exports = router;  
 
