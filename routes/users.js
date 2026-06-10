@@ -67,7 +67,7 @@ router.post('/signin', async (req, res) => {
         if ( !bcrypt.compareSync(req.body.password, userExists.password) ) {
             return res.status(400).send({result: false, answer : 'User not found or wrong password'});
         } else {
-
+          
       async function getLocalMovies(userData) {
         //  4.1 Fonction qui prends les movieid de l'utilisateur, puis va sortir les résultats bien formatés
         if (userData.movies) {
@@ -934,5 +934,74 @@ router.delete('/remove-friend', async (req, res) => {
   }
 });
 
+// ROUTE : Récupérer les films prêtés et empruntés (My Shares)
+router.post('/my-shares', async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    // 1. On trouve l'utilisateur actuel (toi)
+    const me = await User.findOne({ token: token }).populate('movies.movieid');
+    if (!me) {
+      return res.json({ result: false, error: 'Utilisateur introuvable' });
+    }
+
+    // 2. MISSION A : Récupérer TES films prêtés
+    const myLoanedMovies = me.movies
+      .filter(movie => movie.isLoaned === true)
+      .map(movie => {
+        return {
+          ...movie.toObject(),
+          shareType: 'loaned', // 👈 L'étiquette magique pour le Frontend
+          ownerName: 'Moi'
+        };
+      });
+
+    // 3. MISSION B : Récupérer les films que TU as empruntés
+    let myBorrowedMovies = [];
+    
+    // On cherche parmi tes amis (pour optimiser la recherche)
+    const friendsIds = me.friends.map(f => f.userid);
+    
+    // On récupère les profils de tes amis avec leurs films peuplés
+    const friends = await User.find({ _id: { $in: friendsIds } }).populate('movies.movieid');
+
+    // On fouille dans la collection de chaque ami
+    for (const friend of friends) {
+      const borrowedFromFriend = friend.movies
+        .filter(movie => {
+          // Si le film n'est pas prêté ou n'a pas d'historique, on l'ignore
+          if (!movie.isLoaned || !movie.pastLoans || movie.pastLoans.length === 0) return false;
+          
+          // On regarde le prêt EN COURS (le dernier du tableau)
+          const currentLoan = movie.pastLoans[movie.pastLoans.length - 1];
+          
+          // On vérifie si c'est un prêt "in-app" et si le userid correspond à ton ID
+          return currentLoan.isSharedToUser && 
+                 currentLoan.userid && 
+                 currentLoan.userid.toString() === me._id.toString();
+        })
+        .map(movie => {
+          return {
+            ...movie.toObject(),
+            shareType: 'borrowed', // 👈 L'autre étiquette magique
+            ownerName: friend.username, // On garde le nom du propriétaire pour l'afficher sur la fiche !
+            ownerId: friend._id
+          };
+        });
+
+      // On ajoute ces films trouvés à notre grande liste
+      myBorrowedMovies = [...myBorrowedMovies, ...borrowedFromFriend];
+    }
+
+    // 4. On fusionne les deux listes
+    const allShares = [...myLoanedMovies, ...myBorrowedMovies];
+
+    res.json({ result: true, shares: allShares });
+
+  } catch (error) {
+    console.error("Erreur /my-shares :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
 module.exports = router;  
 
