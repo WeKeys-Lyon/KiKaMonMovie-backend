@@ -601,7 +601,7 @@ router.get('/notifications/:token', async (req, res) => {
         const currentLoan = myMovie.pastLoans[myMovie.pastLoans.length - 1];
         
         // Si la date est dépassée
-        if (currentLoan.dueDate && new Date(currentLoan.dueDate) < today) {
+        if (currentLoan.dueDate && new Date(currentLoan.dueDate) < today && currentLoan.Notification === true) {
           
           // On vérifie qu'on n'a pas déjà généré cette notification pour ce film
           const alreadyNotified = me.notifications.some(n => 
