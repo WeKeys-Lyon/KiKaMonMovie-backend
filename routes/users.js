@@ -13,6 +13,8 @@ const uid2 = require('uid2');
 const { checkBody, checkUsername, checkEmail, checkPassword} = require('../modules/checkBody');
 const {getMovieTreated} = require('../modules/makeACard');
 const mongoose = require('mongoose');
+const cloudinary = require('cloudinary').v2;
+const fs = require('fs');
 
 
 // inscription d'un nouvel utilisateur
@@ -183,7 +185,7 @@ router.post('/add-movie', async (req, res) => {
         MusicBy: composersIds,
         popularity: movie.popularity
       });
-
+      const resultCloudinary = await cloudinary.uploader.upload(`https://image.tmdb.org/t/p/w500${movie.poster_path}`, {use_filename: true, unique_filename: false});
       existingMovie = await newMovie.save();
     }
 
