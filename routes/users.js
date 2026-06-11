@@ -1034,5 +1034,75 @@ router.post('/my-shares', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
+// ROUTE : Ajouter un avis sur un film
+router.post('/add-review', async (req, res) => {
+  try {
+    const { token, ownerId, tmdb_id, rating, comment } = req.body;
+
+    // 1. Identifier l'utilisateur qui poste l'avis
+    const me = await User.findOne({ token: token });
+    if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    // 2. Identifier le propriétaire du film
+    const targetUserId = ownerId || me._id;
+    const targetUser = await User.findById(targetUserId).populate('movies.movieid');
+    if (!targetUser) return res.json({ result: false, error: 'Propriétaire introuvable' });
+
+    // 3. Trouver le film
+    const movieIndex = targetUser.movies.findIndex(m => m.movieid && m.movieid.tmdb_id === tmdb_id);
+    if (movieIndex === -1) return res.json({ result: false, error: 'Film introuvable' });
+
+    const targetMovie = targetUser.movies[movieIndex];
+
+    // 🔒 4. VÉRIFICATIONS (Sécurisées contre les variables nulles)
+    if (targetUserId.toString() !== me._id.toString()) {
+      
+      const hasBorrowed = targetMovie.pastLoans.some(loan => {
+        const borrowerId = loan.userid?._id || loan.userid;
+        return borrowerId && borrowerId.toString() === me._id.toString();
+      });
+      if (!hasBorrowed) return res.json({ result: false, error: "Vous devez avoir emprunté ce film pour laisser un avis." });
+
+      const friendData = targetUser.friends.find(f => {
+        const fId = f.userid?._id || f.userid;
+        return fId && fId.toString() === me._id.toString();
+      });
+      if (!friendData) return res.json({ result: false, error: "Vous n'êtes pas amis avec ce propriétaire." });
+
+      if (rating > 0 && !friendData.canRate) {
+        return res.json({ result: false, error: "L'auteur ne vous autorise pas à noter ses films." });
+      }
+      // Sécurité ajoutée ici pour le .trim() !
+      if (comment && comment.trim().length > 0 && !friendData.canComment) {
+        return res.json({ result: false, error: "L'auteur ne vous autorise pas à commenter ses films." });
+      }
+    }
+
+    // 5. Sauvegarde blindée
+    const newReview = {
+      userid: me._id,
+      rating: rating,
+      comment: comment,
+      createdAt: new Date()
+    };
+
+    // On utilise l'ID du film de la DB originale au lieu du sous-id, c'est infaillible
+    const updateResult = await User.updateOne(
+      { _id: targetUser._id, "movies.movieid": targetMovie.movieid._id },
+      { $push: { "movies.$.reviews": newReview } }
+    );
+
+    if (updateResult.modifiedCount === 0) {
+      return res.json({ result: false, error: "L'avis n'a pas pu être sauvegardé en base." });
+    }
+
+    res.json({ result: true, message: 'Avis publié avec succès !' });
+
+  } catch (error) {
+    // 🌟 Si ça plante encore, l'erreur exacte s'affichera en rouge dans ton terminal !
+    console.error("Erreur détaillée /add-review :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
 module.exports = router;  
 
