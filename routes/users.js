@@ -906,6 +906,34 @@ router.post('/remind-loan', async (req, res) => {
   }
 });
 
+// ROUTE : Marquer un film comme récupéré (depuis le Modal ou MyShares)
+router.post('/remove-loan', async (req, res) => {
+  try {
+    const { token, tmdb_id } = req.body;
+
+    // On utilise populate pour pouvoir lire le tmdb_id du film
+    const me = await User.findOne({ token: token }).populate('movies.movieid');
+    if (!me) {
+      return res.json({ result: false, error: 'Utilisateur introuvable' });
+    }
+
+    // On cherche le film via son tmdb_id
+    const movieIndex = me.movies.findIndex(m => m.movieid && m.movieid.tmdb_id === tmdb_id);
+    
+    if (movieIndex !== -1) {
+      me.movies[movieIndex].isLoaned = false;
+      await me.save();
+      res.json({ result: true, message: 'Film récupéré !' });
+    } else {
+      res.json({ result: false, error: 'Film non trouvé dans la collection' });
+    }
+
+  } catch (error) {
+    console.error("Erreur /remove-loan :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
 // ROUTE : Supprimer un ami
 router.delete('/remove-friend', async (req, res) => {
   try {
@@ -940,7 +968,11 @@ router.post('/my-shares', async (req, res) => {
     const { token } = req.body;
 
     // 1. On trouve l'utilisateur actuel (toi)
-    const me = await User.findOne({ token: token }).populate('movies.movieid');
+    const me = await User.findOne({ token: token }).populate('movies.movieid').populate({
+      path: 'movies.pastLoans.userid',
+      select: 'username',
+      model: 'users'
+    });
     if (!me) {
       return res.json({ result: false, error: 'Utilisateur introuvable' });
     }
@@ -951,7 +983,7 @@ router.post('/my-shares', async (req, res) => {
       .map(movie => {
         return {
           ...movie.toObject(),
-          shareType: 'loaned', // 👈 L'étiquette magique pour le Frontend
+          shareType: 'loaned', 
           ownerName: 'Moi'
         };
       });
