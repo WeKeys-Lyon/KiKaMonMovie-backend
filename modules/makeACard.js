@@ -59,6 +59,7 @@ function makeACard(api_data) {
 }
 
 async function getMovieTreated(moviedata) {
+
     // 🛡️ BOUCLIER 1 : Si on nous envoie du vide, on annule.
     if (!moviedata) return null;
 
@@ -67,7 +68,7 @@ async function getMovieTreated(moviedata) {
 
     // 🛡️ BOUCLIER 2 : Si au final on n'a aucun ID valide, on annule.
     if (!targetId) return null;
-
+    
     // On cherche d'abord dans notre base de données "Offline"
     const getMyMovieOffline = await Movie.findOne({ tmdb_id: targetId })
         .populate('DirectedBy.directorid')
@@ -106,7 +107,7 @@ async function getMovieTreated(moviedata) {
         let moreInfos = await newResponse.json();
 
         if (moreInfos.status == "Released") {
-    
+            
             return (makeACard(moreInfos));
         }
         return null; 

@@ -16,7 +16,7 @@ const userSchema = new mongoose.Schema({
             ref: 'users'
   }],
   movies: [{
-            movieid: {type: mongoose.Schema.Types.ObjectId, ref:'movies'},
+            movieid: {type: mongoose.Schema.Types.ObjectId, ref:'movies', unique: true},
             ranking: {type: Number, required: false},
             review: {type: String, required: false},
             isLoaned: {type: Boolean, required: true},
