@@ -230,8 +230,6 @@ router.post('/add-movies', async (req, res) => {
         
         let existingMovie = await Movie.findOne({ tmdb_id: movie });
         if(!existingMovie) {
-          console.log('ce film n\'est pas en BDD ' + movie);
-          
           const result = await getMovieTreated({movieid: {tmdb_id: movie}})
           // -- GESTION DES RÉALISATEURS --
           const directorsIds = [];
@@ -323,7 +321,7 @@ router.post('/add-movies', async (req, res) => {
       }
       )
       )
-      res.status(200).send({result: true, answer: await formattedMovies})
+      res.status(200).send({result: true, answer: formattedMovies})
   } catch (error) {
     console.error("Erreur critique :", error);
     res.json({ result: false, error: 'Erreur interne du serveur' });
