@@ -212,7 +212,125 @@ router.post('/add-movie', async (req, res) => {
     res.json({ result: false, error: 'Erreur interne du serveur' });
   } 
 });
+// Ajouter un groupe de films en masse
+router.post('/add-movies', async (req, res) => {
+  try {
+    if (!checkBody(req.body, ['token', 'moviesid'])) {
+        return res.status(400).send({result: false, answer : 'Missing parameters'});
+    }
+    const { token, moviesid } = req.body;
 
+    // 1. Trouver l'utilisateur
+    const user = await User.findOne({ token: token });
+      if (!user) {
+        return res.json({ result: false, error: 'Utilisateur introuvable' });
+      }
+      if (moviesid.length > 1) {
+        const formattedMovies = await Promise.all (moviesid?.forEach(async (movie) => {
+        // 2. Vérifier si le film existe déjà dans la BDD Globale
+        let existingMovie = await Movie.findOne({ tmdb_id: movie.tmdb_id });
+        if(!existingMovie) {
+          console.log('ce film n\'est pas en BDD ' + movie);
+          
+          const result = await getMovieTreated({movieid: {tmdb_id: movie}})
+          return (await result)
+        }
+      
+      })
+      )
+    }
+    
+    res.send(200).status({result: true, answer: formattedMovies})
+    
+
+    /* // 3. SI LE FILM N'EXISTE PAS : On peuple les collections avec upsert
+    if (!existingMovie) {
+      
+      // -- GESTION DES RÉALISATEURS --
+      const directorsIds = [];
+      for (const directorData of (movie.DirectedBy || [])) {
+        const director = await Director.findOneAndUpdate(
+          { tmdb_director_id: directorData.tmdb_director_id }, // Recherche
+          { name: directorData.name, popularity: directorData.popularity }, // Mise à jour
+          { returnDocument: 'after', upsert: true } // Création si inexistant
+        );
+        directorsIds.push({ directorid: director._id });
+      }
+
+      // -- GESTION DU CASTING --
+      const actorsIds = [];
+      for (const actorData of (movie.Cast || [])) {
+        const castMember = await Cast.findOneAndUpdate(
+          { tmdb_actor_id: actorData.tmdb_actor_id },
+          { name: actorData.name, popularity: actorData.popularity },
+          { returnDocument: 'after', upsert: true }
+        );
+        actorsIds.push({ actorid: castMember._id }); 
+      }
+
+      // -- GESTION DES GENRES --
+      const genresIds = [];
+      for (const genreData of (movie.Genres || [])) { 
+        const genre = await Genre.findOneAndUpdate(
+          { tmdb_genre_id: genreData.tmdb_genre_id },
+          { name: genreData.name }, // Les genres n'ont généralement pas de popularité
+          { returnDocument: 'after', upsert: true }
+        );
+        genresIds.push({ genreid: genre._id });
+      }
+
+      // -- GESTION DES COMPOSITEURS --
+      const composersIds = [];
+      for (const composerData of (movie.MusicBy || [])) {
+        const composer = await Composer.findOneAndUpdate(
+          { tmdb_composer_id: composerData.tmdb_composer_id },
+          { name: composerData.name, popularity: composerData.popularity },
+          { returnDocument: 'after', upsert: true }
+        );
+        composersIds.push({ composerid: composer._id });
+      }
+
+      // -- CRÉATION DU FILM EN BDD --
+      const newMovie = new Movie({
+        tmdb_id: movie.tmdb_id,
+        original_title: movie.original_title,
+        title_fr: movie.title_fr,
+        release_date: movie.release_date,
+        poster_path: movie.poster_path,
+        DirectedBy: directorsIds,
+        Cast: actorsIds,
+        Genres: genresIds,
+        MusicBy: composersIds,
+        popularity: movie.popularity
+      });
+      const resultCloudinary = await cloudinary.uploader.upload(`https://image.tmdb.org/t/p/w500${movie.poster_path}`, {use_filename: true, unique_filename: false});
+      existingMovie = await newMovie.save();
+    }
+
+    // 4. Vérifier si le film est DÉJÀ dans la collection de L'UTILISATEUR
+    const isAlreadyInCollection = user.movies.some(
+      (m) => m.movieid && m.movieid.toString() === existingMovie._id.toString()
+    );
+
+    if (isAlreadyInCollection) {
+      return res.json({ result: false, error: 'Ce film est déjà dans votre collection' });
+    }
+
+    // 5. Ajouter le film à l'utilisateur
+    user.movies.push({
+      movieid: existingMovie._id,
+      isLoaned: false,
+      isLiked: false 
+    });
+    await user.save();
+
+    res.json({ result: true, message: 'Film ajouté avec succès !' });*/
+
+  } catch (error) {
+    console.error("Erreur critique :", error);
+    res.json({ result: false, error: 'Erreur interne du serveur' });
+  } 
+});
 //supprimer un film
 router.delete('/delete-movie/', async (req, res) => {
   try {
@@ -247,7 +365,6 @@ router.delete('/delete-movie/', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
-
 router.post('/add-loan', async (req, res) => {
     try {
       //on obtient l'Object_ID du film
@@ -311,7 +428,6 @@ router.post('/add-loan', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
-
 router.post('/remove-loan', async (req,res) => {
   try { 
     if (!checkBody(req.body, ['token', 'tmdb_id'])) {
@@ -522,8 +638,6 @@ router.put('/update-friend-permissions', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
-
-
 // ROUTE : Récupérer la collection d'un ami (si autorisé)
 router.post('/friend-collection', async (req, res) => {
   try {
@@ -554,7 +668,6 @@ router.post('/friend-collection', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
-
 // ROUTE : Demander à emprunter un film
 router.post('/ask-movie', async (req, res) => {
   try {
@@ -604,8 +717,7 @@ router.post('/ask-movie', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
-
-// Route: recevoir les notifications et vérifier les dates de fin de pre^t
+// Route: recevoir les notifications et vérifier les dates de fin de prêt
 router.get('/notifications/:token', async (req, res) => {
   try {
     const token = req.params.token;
@@ -669,7 +781,6 @@ router.get('/notifications/:token', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' }); 
   }
 });
-
 router.post('/isLiked', async (req, res) => {
   if (!checkBody(req.body, ['token', 'tmdb_id'])) {
       res.status(400).send({result: false, answer : 'Missing parameters'});
@@ -697,7 +808,6 @@ router.post('/isLiked', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 })
-
 // ROUTE : Refuser une demande de prêt
 router.post('/refuse-loan', async (req, res) => {
   try {
@@ -735,7 +845,6 @@ router.post('/refuse-loan', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
-
 // ROUTE : Supprimer une notification
 router.post('/delete-notification', async (req, res) => {
   try {
@@ -830,7 +939,6 @@ router.post('/accept-friend', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
-
 //refuser un ami
 router.post('/refuse-friend', async (req, res) => {
   try {
@@ -865,7 +973,6 @@ router.post('/refuse-friend', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
-
 // ROUTE : Envoyer un rappel à un emprunteur
 router.post('/remind-loan', async (req, res) => {
   try {
@@ -904,7 +1011,6 @@ router.post('/remind-loan', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
-
 // ROUTE : Supprimer un ami
 router.delete('/remove-friend', async (req, res) => {
   try {
@@ -932,6 +1038,5 @@ router.delete('/remove-friend', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
-
 module.exports = router;  
 
