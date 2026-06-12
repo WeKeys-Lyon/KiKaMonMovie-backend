@@ -1043,20 +1043,23 @@ router.post('/add-review', async (req, res) => {
     const me = await User.findOne({ token: token });
     if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
 
-    // 2. Identifier le propriétaire du film
+    // 🌟 LA CLÉ EST ICI : On récupère d'abord l'ID global du film (Comme dans ton add-loan !)
+    const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id');
+    if (!myMovieDB) return res.json({ result: false, error: 'Film inconnu dans la base' });
+
+    // 2. Identifier le propriétaire (SANS POPULATE ! Ça débloque la sauvegarde)
     const targetUserId = ownerId || me._id;
-    const targetUser = await User.findById(targetUserId).populate('movies.movieid');
+    const targetUser = await User.findById(targetUserId);
     if (!targetUser) return res.json({ result: false, error: 'Propriétaire introuvable' });
 
-    // 3. Trouver le film
-    const movieIndex = targetUser.movies.findIndex(m => m.movieid && m.movieid.tmdb_id === tmdb_id);
-    if (movieIndex === -1) return res.json({ result: false, error: 'Film introuvable' });
+    // 3. Trouver l'index exact du film dans sa collection
+    const movieIndex = targetUser.movies.findIndex(m => m.movieid.toString() === myMovieDB._id.toString());
+    if (movieIndex === -1) return res.json({ result: false, error: 'Film introuvable dans la collection' });
 
     const targetMovie = targetUser.movies[movieIndex];
 
-    // 🔒 4. VÉRIFICATIONS (Sécurisées contre les variables nulles)
+    // 🔒 4. VÉRIFICATIONS 
     if (targetUserId.toString() !== me._id.toString()) {
-      
       const hasBorrowed = targetMovie.pastLoans.some(loan => {
         const borrowerId = loan.userid?._id || loan.userid;
         return borrowerId && borrowerId.toString() === me._id.toString();
@@ -1069,16 +1072,10 @@ router.post('/add-review', async (req, res) => {
       });
       if (!friendData) return res.json({ result: false, error: "Vous n'êtes pas amis avec ce propriétaire." });
 
-      if (rating > 0 && !friendData.canRate) {
-        return res.json({ result: false, error: "L'auteur ne vous autorise pas à noter ses films." });
-      }
-      // Sécurité ajoutée ici pour le .trim() !
-      if (comment && comment.trim().length > 0 && !friendData.canComment) {
-        return res.json({ result: false, error: "L'auteur ne vous autorise pas à commenter ses films." });
-      }
+      if (rating > 0 && !friendData.canRate) return res.json({ result: false, error: "L'auteur ne vous autorise pas à noter ses films." });
+      if (comment && comment.trim().length > 0 && !friendData.canComment) return res.json({ result: false, error: "L'auteur ne vous autorise pas à commenter." });
     }
 
-    // 5. Sauvegarde blindée
     const newReview = {
       userid: me._id,
       rating: rating,
@@ -1086,21 +1083,23 @@ router.post('/add-review', async (req, res) => {
       createdAt: new Date()
     };
 
-    // On utilise l'ID du film de la DB originale au lieu du sous-id, c'est infaillible
+    // On donne l'ordre direct à la base de données d'injecter ($push) l'avis
     const updateResult = await User.updateOne(
-      { _id: targetUser._id, "movies.movieid": targetMovie.movieid._id },
+      { _id: targetUser._id, "movies.movieid": myMovieDB._id },
       { $push: { "movies.$.reviews": newReview } }
     );
 
-    if (updateResult.modifiedCount === 0) {
-      return res.json({ result: false, error: "L'avis n'a pas pu être sauvegardé en base." });
+    // 🌟 NOTRE DÉTECTEUR DE MENSONGE :
+    console.log("Rapport MongoDB :", updateResult);
+
+    if (updateResult.modifiedCount > 0) {
+      res.json({ result: true, message: 'Avis publié avec succès !' });
+    } else {
+      res.json({ result: false, error: 'MongoDB a refusé de sauvegarder.' });
     }
 
-    res.json({ result: true, message: 'Avis publié avec succès !' });
-
   } catch (error) {
-    // 🌟 Si ça plante encore, l'erreur exacte s'affichera en rouge dans ton terminal !
-    console.error("Erreur détaillée /add-review :", error);
+    console.error("Erreur /add-review :", error);
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });

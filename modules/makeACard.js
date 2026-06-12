@@ -96,7 +96,9 @@ async function getMovieTreated(moviedata) {
             })),
             isLoaned: moviedata.isLoaned || false,
             isLiked: moviedata.isLiked || false,
-            pastLoans: moviedata.pastLoans || []
+            pastLoans: moviedata.pastLoans || [],
+            reviews: moviedata.reviews || [],
+            isAsked: moviedata.isAsked || false,
         };
         return formattedOfflineMovie;            
     } else {
