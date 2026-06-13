@@ -1206,5 +1206,82 @@ router.post('/add-review', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
+
+// ROUTE : Liker ou Unliker un avis (🔒 Réservé au propriétaire)
+router.post('/like-review', async (req, res) => {
+  try {
+    const { token, tmdb_id, reviewId } = req.body;
+    
+    const me = await User.findOne({ token: token });
+    if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id');
+    if (!myMovieDB) return res.json({ result: false, error: 'Film inconnu' });
+
+    // 🔒 SÉCURITÉ : On cherche le film UNIQUEMENT dans la collection de celui qui fait l'action (le propriétaire)
+    const movieIndex = me.movies.findIndex(m => m.movieid.toString() === myMovieDB._id.toString());
+    if (movieIndex === -1) return res.json({ result: false, error: 'Action interdite : Ce film n\'est pas dans votre collection' });
+
+    // On cherche l'avis spécifique
+    const reviewIndex = me.movies[movieIndex].reviews.findIndex(r => r._id.toString() === reviewId);
+    if (reviewIndex === -1) return res.json({ result: false, error: 'Avis introuvable' });
+
+    const review = me.movies[movieIndex].reviews[reviewIndex];
+
+    // Toggle du Like (Si je l'ai déjà liké, je l'enlève. Sinon, je l'ajoute)
+    const alreadyLiked = review.likes.some(id => id.toString() === me._id.toString());
+    if (alreadyLiked) {
+      review.likes = review.likes.filter(id => id.toString() !== me._id.toString());
+    } else {
+      review.likes.push(me._id);
+    }
+
+    // On sauvegarde (ça marchera parfaitement car on n'a pas utilisé populate !)
+    await me.save(); 
+    
+    res.json({ result: true, message: 'Like mis à jour !' });
+
+  } catch (error) {
+    console.error("Erreur /like-review :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+// ROUTE : Répondre à un avis (🔒 Réservé au propriétaire)
+router.post('/reply-review', async (req, res) => {
+  try {
+    const { token, tmdb_id, reviewId, text } = req.body;
+
+    if (!text || text.trim() === '') return res.json({ result: false, error: 'La réponse ne peut pas être vide' });
+
+    const me = await User.findOne({ token: token });
+    if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id');
+    if (!myMovieDB) return res.json({ result: false, error: 'Film inconnu' });
+
+    // 🔒 SÉCURITÉ : Idem, on restreint la recherche à la collection du propriétaire
+    const movieIndex = me.movies.findIndex(m => m.movieid.toString() === myMovieDB._id.toString());
+    if (movieIndex === -1) return res.json({ result: false, error: 'Action interdite : Ce film n\'est pas dans votre collection' });
+
+    const reviewIndex = me.movies[movieIndex].reviews.findIndex(r => r._id.toString() === reviewId);
+    if (reviewIndex === -1) return res.json({ result: false, error: 'Avis introuvable' });
+
+    const newReply = {
+      userid: me._id,
+      text: text,
+      createdAt: new Date()
+    };
+
+    me.movies[movieIndex].reviews[reviewIndex].replies.push(newReply);
+    await me.save();
+
+    res.json({ result: true, message: 'Réponse publiée avec succès !' });
+
+  } catch (error) {
+    console.error("Erreur /reply-review :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
 module.exports = router;  
 
