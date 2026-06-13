@@ -9,7 +9,9 @@ const userSchema = new mongoose.Schema({
   friends: [{ 
             userid: {type: mongoose.Schema.Types.ObjectId, ref:'users'}, 
             canSeeMyCollection: {type: Boolean, required: true, default: true}, 
-            canAskForMovies: {type: Boolean, required: true, defaut: true} 
+            canAskForMovies: {type: Boolean, required: true, default: true}, // (J'ai corrigé une mini coquille sur 'default' ici au passage !)
+            canRate: {type: Boolean, required: true, default: true},
+            canComment: {type: Boolean, required: true, default: true}
         }],
   pendingRequests: [{
             type: mongoose.Schema.Types.ObjectId,
@@ -31,9 +33,24 @@ const userSchema = new mongoose.Schema({
               Notification: {type: Boolean, require: true, default: false}
             }],
             isAsked: [{type: mongoose.Schema.Types.ObjectId, ref:'users'}],
-            isLiked: {type: Boolean, required: true}
+            isLiked: {type: Boolean, required: true},
+            
+            // 🌟 VICTOIRE : On a glissé "reviews" À L'INTÉRIEUR de "movies" !
+            reviews: [{
+              userid: {type: mongoose.Schema.Types.ObjectId, ref:'users'},
+              rating: {type: Number, required: false, min: 0, max: 5},
+              comment: {type: String, required: false},
+              likes: [{type: mongoose.Schema.Types.ObjectId, ref:'users'}],
+              replies: [{
+                userid: {type: mongoose.Schema.Types.ObjectId, ref:'users'},
+                text: {type: String, required: true},
+                createdAt: {type: Date, required: true, default: Date.now}
+              }],
+              createdAt: {type: Date, required: true, default: Date.now}
+            }]
 
-  }],
+  }], // 👈 On ferme "movies" ICI maintenant !
+  
   notifications: [{
             type: {
               type: String,
@@ -44,7 +61,7 @@ const userSchema = new mongoose.Schema({
             movieId: {type: mongoose.Schema.Types.ObjectId, ref:'movies', required: false},
             isRead: {type: Boolean, required: true, default: false}, 
             createdAt: {type: Date, required: true, default: Date.now}
-}],
+  }]
 });
 
 const User = mongoose.model('users', userSchema);
