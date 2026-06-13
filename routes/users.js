@@ -101,7 +101,7 @@ router.post('/signin', async (req, res) => {
         
         const userFriends = await getLocalFriends(userData);
         // 5. Sortie pour le reducer
-        res.status(200).send({result: true, answer: { username: userExists.username, email: userExists.email, token: userExists.token, movies:  userMovies, friends: userFriends, friendCode: userExists.friendCode, notifications: userExists.notifications }})
+        res.status(200).send({result: true, answer: { _id: userExists._id, username: userExists.username, email: userExists.email, token: userExists.token, movies:  userMovies, friends: userFriends, friendCode: userExists.friendCode, notifications: userExists.notifications }})
     };
 
     } catch (error) {
