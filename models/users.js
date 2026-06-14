@@ -5,6 +5,7 @@ const userSchema = new mongoose.Schema({
   password: {type: String, required: true, unique: false},
   email: {type: String, required: true, unique: true},
   token: {type: String, required: true, unique: true},
+  pushToken: { type: String, required: false },
   friendCode: {type: String, unique: true, sparse: true},
   friends: [{ 
             userid: {type: mongoose.Schema.Types.ObjectId, ref:'users'}, 
