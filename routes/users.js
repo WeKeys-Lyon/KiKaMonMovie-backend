@@ -424,40 +424,7 @@ router.post('/add-loan', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
-router.post('/remove-loan', async (req,res) => {
-  try { 
-    if (!checkBody(req.body, ['token', 'tmdb_id'])) {
-      res.status(400).send({result: false, answer : 'Missing parameters'});
-      return;
-    }
 
-    //on obtient l'Object_ID du film
-    const myID = await Movie.findOne({tmdb_id: req.body.tmdb_id}).select('_id');
-
-    //On créé une variable de l'utilisateur
-    const user = await User.findOne({token: req.body.token});
-
-    if (user) {
-      //On va chercher dans quel index de movies se trouve le film séléctionné
-      const movieIndex = user.movies.findIndex(movie => movie.movieid.toString() == myID._id);
-      console.log(movieIndex)
-      if (movieIndex !== -1) {  
-        user.movies[movieIndex].isLoaned = false;
-        await user.save().then(data => res.status(200).send({result: true, answer: user.movies[movieIndex]}));
-
-        
-      } else {
-        res.status(200).send({result: false, error: 'Film introuvable' });
-      }  
-    } else {
-      res.status(200).send({result: false, error: 'Utilisateur introuvable' })
-    }
-  } catch (error) {
-    console.error("Erreur critique :", error);
-    res.json({ result: false, error: 'Erreur serveur interne' });
-  }
-
-})
 // ROUTE : Mettre à jour le profil (Username, Email ou Mot de passe)
 router.put('/update-profile', async (req, res) => {
   try {
@@ -1012,26 +979,60 @@ router.post('/remind-loan', async (req, res) => {
 router.post('/remove-loan', async (req, res) => {
   try {
     const { token, tmdb_id } = req.body;
+    
+    // 🚨 MOUCHARD 1 : Vérifier ce que le frontend envoie
+    console.log("📥 [1] REQUÊTE /remove-loan REÇUE ! tmdb_id envoyé :", tmdb_id);
 
-    // On utilise populate pour pouvoir lire le tmdb_id du film
     const me = await User.findOne({ token: token }).populate('movies.movieid');
     if (!me) {
+      console.log("❌ [2] Utilisateur introuvable !");
       return res.json({ result: false, error: 'Utilisateur introuvable' });
     }
 
-    // On cherche le film via son tmdb_id
+    // 🚨 MOUCHARD 2 : Vérifier la recherche du film
     const movieIndex = me.movies.findIndex(m => m.movieid && m.movieid.tmdb_id === tmdb_id);
+    console.log("🔍 [3] Résultat de la recherche du film (Index) :", movieIndex);
     
     if (movieIndex !== -1) {
-      me.movies[movieIndex].isLoaned = false;
+      const myMovie = me.movies[movieIndex];
+      console.log("✅ [4] FILM TROUVÉ ! Historique des prêts :", myMovie.pastLoans?.length, "prêts.");
+      
+      myMovie.isLoaned = false;
+
+      if (myMovie.pastLoans && myMovie.pastLoans.length > 0) {
+        const lastLoan = myMovie.pastLoans[myMovie.pastLoans.length - 1];
+        const borrowerId = lastLoan.userid;
+        console.log("👤 [5] ID de l'emprunteur trouvé :", borrowerId);
+
+        if (borrowerId) {
+          const borrower = await User.findById(borrowerId);
+          if (borrower) {
+            borrower.notifications.push({
+              type: 'loan_returned',
+              senderId: me._id, 
+              movieId: myMovie.movieid._id, 
+              createdAt: new Date()
+            });
+            await borrower.save();
+            console.log("🔔 [6] NOTIFICATION SAUVEGARDÉE CHEZ L'EMPRUNTEUR !");
+          } else {
+             console.log("❌ [6] Impossible de trouver l'emprunteur dans la base User !");
+          }
+        }
+      } else {
+         console.log("⚠️ [5] Aucun historique 'pastLoans' trouvé pour ce film !");
+      }
+
       await me.save();
-      res.json({ result: true, message: 'Film récupéré !' });
+      res.json({ result: true, message: 'Film récupéré et emprunteur notifié !' });
+      
     } else {
+      console.log("❌ [4] ERREUR : Le film n'a pas été trouvé dans le tableau 'movies' de l'utilisateur !");
       res.json({ result: false, error: 'Film non trouvé dans la collection' });
     }
 
   } catch (error) {
-    console.error("Erreur /remove-loan :", error);
+    console.error("🚨 ERREUR CRITIQUE /remove-loan :", error);
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
@@ -1196,11 +1197,31 @@ router.post('/add-review', async (req, res) => {
     console.log("Rapport MongoDB :", updateResult);
 
     if (updateResult.modifiedCount > 0) {
+      
+      // 🌟 NOUVEAU : ENVOI DE LA NOTIFICATION AU PRÊTEUR 🌟
+      // On vérifie qu'on n'est pas en train de noter notre propre film
+      if (targetUserId.toString() !== me._id.toString()) {
+        await User.updateOne(
+          { _id: targetUser._id },
+          { 
+            $push: { 
+              notifications: {
+                type: 'review_posted',
+                senderId: me._id,      // L'emprunteur qui a écrit l'avis
+                movieId: myMovieDB._id // Le film concerné
+              }
+            } 
+          }
+        );
+        console.log("🔔 Notification 'review_posted' envoyée au prêteur !");
+      }
+
       res.json({ result: true, message: 'Avis publié avec succès !' });
     } else {
       res.json({ result: false, error: 'MongoDB a refusé de sauvegarder.' });
     }
 
+    
   } catch (error) {
     console.error("Erreur /add-review :", error);
     res.json({ result: false, error: 'Erreur serveur interne' });
