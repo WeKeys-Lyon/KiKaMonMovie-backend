@@ -60,7 +60,9 @@ router.get('/searchpeople/:people', async (req, res) => {
     const detailsUrl = `${base_API}3/person/${personID}/movie_credits`;
     const responseDetails = await fetch(encodeURI(detailsUrl), options_get); 
     let dataDetails = await responseDetails.json();
+    // new Date(getMyMovieOffline.release_date).toISOString().split('T')[0]
 
+    
     if (dataDetails.crew.length && dataDetails.cast.length) {
         const map = new Map([...dataDetails.crew, ...dataDetails.cast]
             .map(obj => [obj.id, obj]));
@@ -72,6 +74,8 @@ router.get('/searchpeople/:people', async (req, res) => {
           poster_path: e.poster_path,
           release_date: e.release_date
         }))
+      
+      results = results.filter((film) => (new Date(film.release_date).getTime() / 1000) < (new Date().getTime() / 1000))
     res.status(200).send({result: true, answer: results, people: dataPerson.results[0].name})
 
     }

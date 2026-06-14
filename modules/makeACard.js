@@ -118,7 +118,6 @@ async function getMovieTreated(moviedata) {
         let moreInfos = await newResponse.json();
 
         if (moreInfos.status == "Released") {
-            
             return (makeACard(moreInfos));
         }
         return null; 
