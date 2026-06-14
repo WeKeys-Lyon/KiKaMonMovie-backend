@@ -44,13 +44,13 @@ function makeACard(api_data) {
         tmdb_genre_id: element.id
     })    
     });
-    //Obtenir l'affiche FR si film Fr
+    //Obtenir l'affiche suivant le type de poster souhaité
     let afficheFr = '';
     const affiches = api_data.images?.posters?.filter((affiche) => affiche.iso_3166_1 == api_data.origin_country[0]).sort((a,b) => b.vote_average - a.vote_average);
     if (affiches[0]) {
-            if (affiches[0].file_path) {
-            afficheFr = affiches[0].file_path ? affiches[0]['file_path'] : ''
-            }
+        if (affiches[0].file_path) {
+        afficheFr = affiches[0].file_path ? affiches[0]['file_path'] : '';
+        }
     }
     
     return ({
@@ -67,7 +67,7 @@ function makeACard(api_data) {
     })
 }
 
-async function getMovieTreated(moviedata) {
+async function getMovieTreated(moviedata, poster_type) {
 
     // 🛡️ BOUCLIER 1 : Si on nous envoie du vide, on annule.
     if (!moviedata) return null;

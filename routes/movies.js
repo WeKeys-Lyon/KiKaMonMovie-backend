@@ -74,8 +74,8 @@ router.get('/searchpeople/:people', async (req, res) => {
           poster_path: e.poster_path,
           release_date: e.release_date
         }))
-      
-      results = results.filter((film) => (new Date(film.release_date).getTime() / 1000) < (new Date().getTime() / 1000))
+    // Filtrage pour sortir les films qui sont dans le futur
+    results = results.filter((film) => (new Date(film.release_date).getTime() / 1000) < (new Date().getTime() / 1000))
     res.status(200).send({result: true, answer: results, people: dataPerson.results[0].name})
 
     }
