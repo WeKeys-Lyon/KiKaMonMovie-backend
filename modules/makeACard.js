@@ -43,13 +43,22 @@ function makeACard(api_data) {
         name: element.name,
         tmdb_genre_id: element.id
     })    
-    })
+    });
+    //Obtenir l'affiche FR si film Fr
+    let afficheFr = '';
+    const affiches = api_data.images?.posters?.filter((affiche) => affiche.iso_3166_1 == api_data.origin_country[0]).sort((a,b) => b.vote_average - a.vote_average);
+    if (affiches[0]) {
+            if (affiches[0].file_path) {
+            afficheFr = affiches[0].file_path ? affiches[0]['file_path'] : ''
+            }
+    }
+    
     return ({
         tmdb_id: api_data.id,
         original_title: api_data.original_title,
         title_fr: (titlefr) ? titlefr : api_data.original_title,
         release_date: api_data.release_date,
-        poster_path: api_data.poster_path,
+        poster_path: (afficheFr) ? afficheFr : api_data.poster_path,
         DirectedBy: cleanDirectors.sort((a,b) => b.popularity - a.popularity),
         Cast: cleanCast.sort((a,b) => b.popularity - a.popularity),
         MusicBy: cleanComposers.sort((a,b) => b.popularity - a.popularity),
@@ -75,7 +84,7 @@ async function getMovieTreated(moviedata) {
         .populate('Cast.actorid')
         .populate('Genres.genreid')
         .populate('MusicBy.composerid');
-
+    
     if (getMyMovieOffline) {
         const formattedOfflineMovie = {
             tmdb_id: getMyMovieOffline.tmdb_id,
@@ -104,7 +113,7 @@ async function getMovieTreated(moviedata) {
         return formattedOfflineMovie;            
     } else {
         
-        const moreInfosURL = `${base_API}3/movie/${targetId}?append_to_response=credits,translations`;
+        const moreInfosURL = `${base_API}3/movie/${targetId}?append_to_response=credits,translations,images`;
         const newResponse = await fetch(encodeURI(moreInfosURL), options_get);
         let moreInfos = await newResponse.json();
 
