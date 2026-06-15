@@ -1176,13 +1176,17 @@ router.post('/add-review', async (req, res) => {
       if (comment && comment.trim().length > 0 && !friendData.canComment) return res.json({ result: false, error: "L'auteur ne vous autorise pas à commenter." });
     }
 
+   const newReviewId = new mongoose.Types.ObjectId(); 
+
     const newReview = {
+      _id: newReviewId, //
       userid: me._id,
       rating: rating,
       comment: comment,
       createdAt: new Date()
     };
 
+    // On donne l'ordre direct à la base de données d'injecter ($push) l'avis
     const updateResult = await User.updateOne(
       { _id: targetUser._id, "movies.movieid": myMovieDB._id },
       { $push: { "movies.$.reviews": newReview } }
@@ -1210,7 +1214,7 @@ router.post('/add-review', async (req, res) => {
         );
       }
 
-      res.json({ result: true, message: 'Avis publié avec succès !' });
+      res.json({ result: true, message: 'Avis publié avec succès !', reviewId: newReviewId});
     } else {
       res.json({ result: false, error: 'MongoDB a refusé de sauvegarder.' });
     }
@@ -1314,6 +1318,244 @@ router.post('/save-push-token', async (req, res) => {
 
   } catch (error) {
     console.error("Erreur /save-push-token :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+
+// ROUTE : Modifier un avis (Note et/ou Commentaire)
+
+router.put('/edit-review', async (req, res) => {
+  try {
+    const { token, tmdb_id, reviewId, newRating, newComment } = req.body;
+
+    // 1. Authentifier l'utilisateur demandeur
+    const me = await User.findOne({ token: token });
+    if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    // 2. Trouver le film dans la base globale
+    const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id');
+    if (!myMovieDB) return res.json({ result: false, error: 'Film inconnu' });
+
+    // 3. Trouver le propriétaire du film qui héberge la review
+    // (On cherche l'utilisateur qui possède ce film ET cet avis précis)
+    const targetUser = await User.findOne({
+      "movies.movieid": myMovieDB._id,
+      "movies.reviews._id": reviewId
+    });
+    if (!targetUser) return res.json({ result: false, error: 'Avis ou film introuvable chez les utilisateurs' });
+
+    // 4. Extraction de l'avis pour vérification de sécurité
+    const movieData = targetUser.movies.find(m => m.movieid.toString() === myMovieDB._id.toString());
+    const reviewData = movieData.reviews.find(r => r._id.toString() === reviewId);
+
+    // Sécurité critique : Es-tu bien l'auteur de cet avis ?
+    if (reviewData.userid.toString() !== me._id.toString()) {
+      return res.json({ result: false, error: "Action interdite : Vous n'êtes pas l'auteur de cet avis" });
+    }
+
+    // 5. Mise à jour chirurgicale dans MongoDB en utilisant les identifiants
+    // On utilise $[movie] et $[review] (positional filtering) pour cibler précisément l'élément imbriqué
+    await User.updateOne(
+      { _id: targetUser._id },
+      { 
+        $set: { 
+          "movies.$[movie].reviews.$[review].rating": newRating,
+          "movies.$[movie].reviews.$[review].comment": newComment,
+          "movies.$[movie].reviews.$[review].updatedAt": new Date() // Optionnel : pour savoir s'il a été modifié
+        } 
+      },
+      {
+        arrayFilters: [
+          { "movie.movieid": myMovieDB._id },
+          { "review._id": reviewId }
+        ]
+      }
+    );
+
+    res.json({ result: true, message: 'Avis modifié avec succès !' });
+
+  } catch (error) {
+    console.error("Erreur /edit-review :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+
+//ROUTE : Supprimer un avis
+
+router.delete('/delete-review', async (req, res) => {
+  try {
+    const { token, tmdb_id, reviewId } = req.body;
+    
+    console.log("-----------------------------------------");
+    console.log("🗑️ [DELETE] Requête reçue !");
+    console.log("👉 tmdb_id :", tmdb_id);
+    console.log("👉 reviewId :", reviewId);
+
+    // 1. Authentifier l'utilisateur
+    const me = await User.findOne({ token: token });
+    if (!me) {
+      console.log("❌ Utilisateur non trouvé");
+      return res.json({ result: false, error: 'Utilisateur introuvable' });
+    }
+
+    // 2. Trouver le film
+    const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id');
+    if (!myMovieDB) {
+      console.log("❌ Film non trouvé dans la BDD Globale");
+      return res.json({ result: false, error: 'Film inconnu' });
+    }
+
+    // 3. Trouver le propriétaire de la collection qui contient cet avis précis
+    const targetUser = await User.findOne({
+      "movies.movieid": myMovieDB._id,
+      "movies.reviews._id": reviewId
+    });
+
+    if (!targetUser) {
+      console.log("❌ Impossible de trouver un utilisateur possédant ce film ET cet avis (reviewId incorrect ?)");
+      return res.json({ result: false, error: 'Avis introuvable dans la base' });
+    }
+
+    // 4. Vérification de sécurité
+    const movieData = targetUser.movies.find(m => m.movieid.toString() === myMovieDB._id.toString());
+    const reviewData = movieData.reviews.find(r => r._id.toString() === reviewId);
+
+    const isAuthor = reviewData.userid.toString() === me._id.toString();
+    const isOwner = targetUser._id.toString() === me._id.toString();
+
+    console.log(`👤 isAuthor : ${isAuthor} | isOwner : ${isOwner}`);
+
+    if (!isAuthor && !isOwner) {
+      console.log("❌ Action interdite (droits insuffisants)");
+      return res.json({ result: false, error: "Action interdite : Vous n'avez pas les droits pour supprimer cet avis." });
+    }
+
+    // 5. Suppression
+    const updateResult = await User.updateOne(
+      { _id: targetUser._id, "movies.movieid": myMovieDB._id },
+      { $pull: { "movies.$.reviews": { _id: reviewId } } }
+    );
+
+    console.log("✅ Résultat MongoDB :", updateResult);
+    console.log("-----------------------------------------");
+
+    res.json({ result: true, message: 'Avis supprimé avec succès !' });
+
+  } catch (error) {
+    console.error("🚨 Erreur critique /delete-review :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+
+// 🌟 ROUTE : Modifier une réponse
+
+router.put('/edit-reply', async (req, res) => {
+  try {
+    const { token, tmdb_id, reviewId, replyId, newText } = req.body;
+
+    const me = await User.findOne({ token: token });
+    if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id');
+    if (!myMovieDB) return res.json({ result: false, error: 'Film inconnu' });
+
+    const targetUser = await User.findOne({
+      "movies.movieid": myMovieDB._id,
+      "movies.reviews._id": reviewId,
+      "movies.reviews.replies._id": replyId
+    });
+    if (!targetUser) return res.json({ result: false, error: 'Réponse introuvable' });
+
+    const movieData = targetUser.movies.find(m => m.movieid.toString() === myMovieDB._id.toString());
+    const reviewData = movieData.reviews.find(r => r._id.toString() === reviewId);
+    const replyData = reviewData.replies.find(rep => rep._id.toString() === replyId);
+
+    // 🔒 SÉCURITÉ STRICTE : Seul l'Auteur peut modifier sa propre réponse
+    if (replyData.userid.toString() !== me._id.toString()) {
+      return res.json({ result: false, error: "Action interdite : Vous ne pouvez pas modifier les mots de quelqu'un d'autre." });
+    }
+
+    // Mise à jour ciblée avec les arrayFilters pour descendre de 3 niveaux (Film -> Avis -> Réponse)
+    await User.updateOne(
+      { _id: targetUser._id },
+      { 
+        $set: { 
+          "movies.$[movie].reviews.$[review].replies.$[reply].text": newText
+        } 
+      },
+      {
+        arrayFilters: [
+          { "movie.movieid": myMovieDB._id },
+          { "review._id": reviewId },
+          { "reply._id": replyId }
+        ]
+      }
+    );
+
+    res.json({ result: true, message: 'Réponse modifiée avec succès !' });
+
+  } catch (error) {
+    console.error("Erreur /edit-reply :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+
+//ROUTE : Supprimer une réponse
+
+router.delete('/delete-reply', async (req, res) => {
+  try {
+    const { token, tmdb_id, reviewId, replyId } = req.body;
+
+    const me = await User.findOne({ token: token });
+    if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id');
+    if (!myMovieDB) return res.json({ result: false, error: 'Film inconnu' });
+
+    const targetUser = await User.findOne({
+      "movies.movieid": myMovieDB._id,
+      "movies.reviews._id": reviewId
+    });
+    if (!targetUser) return res.json({ result: false, error: 'Avis introuvable' });
+
+    const movieData = targetUser.movies.find(m => m.movieid.toString() === myMovieDB._id.toString());
+    const reviewData = movieData.reviews.find(r => r._id.toString() === reviewId);
+    const replyData = reviewData.replies.find(rep => rep._id.toString() === replyId);
+
+    if (!replyData) return res.json({ result: false, error: 'Réponse introuvable' });
+
+    // 🔒 SÉCURITÉ DE MODÉRATION : Auteur de la réponse OU Propriétaire du film
+    const isAuthor = replyData.userid.toString() === me._id.toString();
+    const isOwner = targetUser._id.toString() === me._id.toString();
+
+    if (!isAuthor && !isOwner) {
+      return res.json({ result: false, error: "Action interdite : Vous n'avez pas les droits pour supprimer cette réponse." });
+    }
+
+    // Suppression (Pull) de la réponse spécifique
+    await User.updateOne(
+      { _id: targetUser._id },
+      { 
+        $pull: { 
+          "movies.$[movie].reviews.$[review].replies": { _id: replyId } 
+        } 
+      },
+      {
+        arrayFilters: [
+          { "movie.movieid": myMovieDB._id },
+          { "review._id": reviewId }
+        ]
+      }
+    );
+
+    res.json({ result: true, message: 'Réponse supprimée avec succès !' });
+
+  } catch (error) {
+    console.error("Erreur /delete-reply :", error);
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
