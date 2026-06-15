@@ -418,7 +418,7 @@ router.delete('/delete-movie/', async (req, res) => {
 // Ajouter un prêt
 router.post('/add-loan', async (req, res) => {
   try {
-    const myID = await Movie.findOne({ tmdb_id: req.body.tmdb_id }).select('_id');
+    const myID = await Movie.findOne({ tmdb_id: req.body.tmdb_id }).select('_id title_fr original_title');
 
     const newLoan = {
       movieid: await myID._id,
@@ -463,7 +463,12 @@ router.post('/add-loan', async (req, res) => {
             await friend.save();
             
             // 🌟 PUSH NOTIFICATION : Le prêt est accepté
-            await sendPushNotification(friend, "✅ Prêt accepté !", `${user.username} a accepté de vous prêter ce film.`);
+            const movieTitle = myID.title_fr || myID.original_title || "ce film";
+            await sendPushNotification(
+              friend, 
+              "✅ Prêt accepté !", 
+              `${user.username} a accepté de vous prêter "${movieTitle}".`
+            );
           }
         }
 
@@ -1061,7 +1066,18 @@ router.post('/remove-loan', async (req, res) => {
             await borrower.save();
             
             // 🌟 PUSH NOTIFICATION : Film récupéré
-            await sendPushNotification(borrower, "🔄 Film récupéré", `${me.username} a bien récupéré son film. Merci !`);
+           const movieTitle = myMovie.movieid.title_fr || myMovie.movieid.original_title || "son film";
+            await sendPushNotification(
+              borrower, 
+              "Film rendu ! 🍿", 
+              `Qu'avez-vous pensé de "${movieTitle}" ? Cliquez pour laisser un avis !`,
+              // 👇 NOUVEAU : On cache l'ID du film ET l'ID du propriétaire
+              { 
+                type: 'review', 
+                tmdb_id: myMovie.movieid.tmdb_id,
+                ownerId: me._id 
+              }
+            );
           } 
         }
       } 
@@ -1239,7 +1255,11 @@ router.post('/add-review', async (req, res) => {
         await sendPushNotification(
           targetUser,
           "🎬 Nouvel avis !",
-          `${me.username} a laissé un avis sur le film ${myMovieDB.title_fr || myMovieDB.original_title}.`
+          `${me.username} a laissé un avis sur le film ${myMovieDB.title_fr || myMovieDB.original_title}.`,
+          {
+            type: 'review',
+            tmdb_id: myMovieDB.tmdb_id,
+          }
         );
       }
 
