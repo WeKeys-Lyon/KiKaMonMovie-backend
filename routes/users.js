@@ -1176,7 +1176,7 @@ router.post('/add-review', async (req, res) => {
     const me = await User.findOne({ token: token });
     if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
 
-    const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id');
+    const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id title_fr original_title');
     if (!myMovieDB) return res.json({ result: false, error: 'Film inconnu dans la base' });
 
     const targetUserId = ownerId || me._id;
