@@ -10,109 +10,131 @@ const Genre = require('../models/genres');
 const Composer = require('../models/composers');
 const bcrypt = require('bcrypt');
 const uid2 = require('uid2');
-const { checkBody, checkUsername, checkEmail, checkPassword} = require('../modules/checkBody');
-const {getMovieTreated, makeACard} = require('../modules/makeACard');
+const { checkBody, checkUsername, checkEmail, checkPassword } = require('../modules/checkBody');
+const { getMovieTreated, makeACard } = require('../modules/makeACard');
 const mongoose = require('mongoose');
 const cloudinary = require('cloudinary').v2;
 const fs = require('fs');
 
+const { Expo } = require('expo-server-sdk');
+const expo = new Expo(); // Initialise le "traducteur" Expo
+
+// 🌟 NOTRE HELPER : Une fonction réutilisable pour envoyer des notifications
+const sendPushNotification = async (user, title, body, data = {}) => {
+  // On vérifie directement si l'utilisateur a un Token valide
+  if (user.pushToken && Expo.isExpoPushToken(user.pushToken)) {
+    try {
+      const message = [{
+        to: user.pushToken,
+        sound: 'default',
+        title: title,
+        body: body,
+        data: data,
+      }];
+      await expo.sendPushNotificationsAsync(message);
+      console.log(`📲 Push envoyé à ${user.username} : ${title}`);
+    } catch (error) {
+      console.error("Erreur d'envoi Push :", error);
+    }
+  }
+};
 
 // inscription d'un nouvel utilisateur
 router.post('/signup', async (req, res) => {
-   if (!checkBody(req.body, ['username', 'password', 'email'])) {
-    res.status(400).send({result: false, answer : 'Missing parameters'});
+  if (!checkBody(req.body, ['username', 'password', 'email'])) {
+    res.status(400).send({ result: false, answer: 'Missing parameters' });
     return;
   }
   if (!checkEmail(req.body.email)) {
-    res.status(400).send({result: false, answer : 'Invalid email'});
+    res.status(400).send({ result: false, answer: 'Invalid email' });
     return;
   }
-    const userExists = await User.findOne({username: req.body.username});
-    if (userExists) {
-        res.status(400).send({result: false, answer : 'User already exists'});
-        return;
-    }
-    const passwordHash = bcrypt.hashSync(req.body.password, 10);
-    const token = uid2(32);
-    const generatedCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const newUser = new User({
-        username: req.body.username,
-        password: passwordHash,
-        email: req.body.email,
-        token: token,
-        friendCode: generatedCode
-    });
-    await newUser.save();
-    res.status(201).send({result: true, answer : {username: newUser.username, email: newUser.email, token: newUser.token, movies: newUser.movies, friendCode: newUser.friendCode || []}});
-}),
+  const userExists = await User.findOne({ username: req.body.username });
+  if (userExists) {
+    res.status(400).send({ result: false, answer: 'User already exists' });
+    return;
+  }
+  const passwordHash = bcrypt.hashSync(req.body.password, 10);
+  const token = uid2(32);
+  const generatedCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+  const newUser = new User({
+    username: req.body.username,
+    password: passwordHash,
+    email: req.body.email,
+    token: token,
+    friendCode: generatedCode
+  });
+  await newUser.save();
+  res.status(201).send({ result: true, answer: { username: newUser.username, email: newUser.email, token: newUser.token, movies: newUser.movies, friendCode: newUser.friendCode || [] } });
+});
 
 router.post('/signin', async (req, res) => {
-    try {
-        // 1. Vérification des champs
-        if (!checkBody(req.body, ['mylogin', 'password'])) {
-            return res.status(400).send({result: false, answer : 'Missing parameters'});
-        }
+  try {
+    // 1. Vérification des champs
+    if (!checkBody(req.body, ['mylogin', 'password'])) {
+      return res.status(400).send({ result: false, answer: 'Missing parameters' });
+    }
 
-        // 2. Recherche de l'utilisateur 
-        const userExists = await User.findOne({
-            $or: [{ username: req.body.mylogin }, { email: req.body.mylogin }]
-        });
+    // 2. Recherche de l'utilisateur 
+    const userExists = await User.findOne({
+      $or: [{ username: req.body.mylogin }, { email: req.body.mylogin }]
+    });
 
-        // Sécurité : Si l'utilisateur n'existe pas du tout
-        if (!userExists) {
-            return res.status(400).send({result: false, answer : 'User not found or wrong password'});
-        }
+    // Sécurité : Si l'utilisateur n'existe pas du tout
+    if (!userExists) {
+      return res.status(400).send({ result: false, answer: 'User not found or wrong password' });
+    }
 
-        // 3. Vérification du mot de passe
-        if ( !bcrypt.compareSync(req.body.password, userExists.password) ) {
-            return res.status(400).send({result: false, answer : 'User not found or wrong password'});
-        } else {
-          
+    // 3. Vérification du mot de passe
+    if (!bcrypt.compareSync(req.body.password, userExists.password)) {
+      return res.status(400).send({ result: false, answer: 'User not found or wrong password' });
+    } else {
+
       async function getLocalMovies(userData) {
         //  4.1 Fonction qui prends les movieid de l'utilisateur, puis va sortir les résultats bien formatés
         if (userData.movies) {
 
-          const myResults = await Promise.all( userData.movies.map(async movie => {
+          const myResults = await Promise.all(userData.movies.map(async movie => {
             /* let myMovies = {id: movie.movieid.tmdb_id} */
-            
+
             return await getMovieTreated(movie)
-            }) )
-          
+          }))
+
           return myResults;
-              }
-            }
-          // 4.2 On prépare les données depuis userExists et on lance la fonction de formattage
-        const userData = await userExists.populate({ path: 'movies.movieid', model: Movie});
-        const userMovies = await getLocalMovies(userData);
-        // 4.3 On va préparer les amis
-        async function getLocalFriends(userData) {
-       
+        }
+      }
+      // 4.2 On prépare les données depuis userExists et on lance la fonction de formattage
+      const userData = await userExists.populate({ path: 'movies.movieid', model: Movie });
+      const userMovies = await getLocalMovies(userData);
+      // 4.3 On va préparer les amis
+      async function getLocalFriends(userData) {
+
         if (userData.friends) {
-          
-          const myResults = await Promise.all( userData.friends.map(async friend => {
+
+          const myResults = await Promise.all(userData.friends.map(async friend => {
             /* let myMovies = {id: movie.movieid.tmdb_id} */
-            const friendData = await User.findOne({_id: friend.userid}, {username: 1});
+            const friendData = await User.findOne({ _id: friend.userid }, { username: 1 });
             return await friendData
-            }) )
+          }))
           return await myResults;
-              }
-            }
-          // 4.2 On prépare les données depuis userExists et on lance la fonction de formattage
-        
-        const userFriends = await getLocalFriends(userData);
-        // 5. Sortie pour le reducer
-        res.status(200).send({result: true, answer: { _id: userExists._id, username: userExists.username, email: userExists.email, token: userExists.token, movies:  userMovies, friends: userFriends, friendCode: userExists.friendCode, notifications: userExists.notifications }})
+        }
+      }
+      // 4.2 On prépare les données depuis userExists et on lance la fonction de formattage
+
+      const userFriends = await getLocalFriends(userData);
+      // 5. Sortie pour le reducer
+      res.status(200).send({ result: true, answer: { _id: userExists._id, username: userExists.username, email: userExists.email, token: userExists.token, movies: userMovies, friends: userFriends, friendCode: userExists.friendCode, notifications: userExists.notifications } })
     };
 
-    } catch (error) {
-        console.error("Erreur dans signin :", error);
-        res.status(500).send({result: false, answer: 'Internal server error'});
-    }
+  } catch (error) {
+    console.error("Erreur dans signin :", error);
+    res.status(500).send({ result: false, answer: 'Internal server error' });
+  }
 });
 
 // Ajouter un film
 router.post('/add-movie', async (req, res) => {
-  try {     
+  try {
     const { token, movie } = req.body;
 
     // 1. Trouver l'utilisateur
@@ -126,7 +148,7 @@ router.post('/add-movie', async (req, res) => {
 
     // 3. SI LE FILM N'EXISTE PAS : On peuple les collections avec upsert
     if (!existingMovie) {
-      
+
       // -- GESTION DES RÉALISATEURS --
       const directorsIds = [];
       for (const directorData of (movie.DirectedBy || [])) {
@@ -146,12 +168,12 @@ router.post('/add-movie', async (req, res) => {
           { name: actorData.name, popularity: actorData.popularity },
           { returnDocument: 'after', upsert: true }
         );
-        actorsIds.push({ actorid: castMember._id }); 
+        actorsIds.push({ actorid: castMember._id });
       }
 
       // -- GESTION DES GENRES --
       const genresIds = [];
-      for (const genreData of (movie.Genres || [])) { 
+      for (const genreData of (movie.Genres || [])) {
         const genre = await Genre.findOneAndUpdate(
           { tmdb_genre_id: genreData.tmdb_genre_id },
           { name: genreData.name }, // Les genres n'ont généralement pas de popularité
@@ -184,7 +206,7 @@ router.post('/add-movie', async (req, res) => {
         MusicBy: composersIds,
         popularity: movie.popularity
       });
-      const resultCloudinary = await cloudinary.uploader.upload(`https://image.tmdb.org/t/p/w500${movie.poster_path}`, {use_filename: true, unique_filename: false});
+      const resultCloudinary = await cloudinary.uploader.upload(`https://image.tmdb.org/t/p/w500${movie.poster_path}`, { use_filename: true, unique_filename: false });
       existingMovie = await newMovie.save();
     }
 
@@ -201,7 +223,7 @@ router.post('/add-movie', async (req, res) => {
     user.movies.push({
       movieid: existingMovie._id,
       isLoaned: false,
-      isLiked: false 
+      isLiked: false
     });
     await user.save();
 
@@ -210,52 +232,53 @@ router.post('/add-movie', async (req, res) => {
   } catch (error) {
     console.error("Erreur critique :", error);
     res.json({ result: false, error: 'Erreur interne du serveur' });
-  } 
+  }
 });
+
 // Ajouter un groupe de films en masse
 router.post('/add-movies', async (req, res) => {
   try {
     if (!checkBody(req.body, ['token', 'moviesid'])) {
-        return res.status(400).send({result: false, answer : 'Missing parameters'});
+      return res.status(400).send({ result: false, answer: 'Missing parameters' });
     }
     const { token, moviesid } = req.body;
-        const formattedMovies = await Promise.all (moviesid.map(async (movie) => {
+    const formattedMovies = await Promise.all(moviesid.map(async (movie) => {
 
-        // 1. Trouver l'utilisateur
-          const user = await User.findOne({ token: token });
-                if (!user) {
+      // 1. Trouver l'utilisateur
+      const user = await User.findOne({ token: token });
+      if (!user) {
         return res.json({ result: false, error: 'Utilisateur introuvable' });
       }
-        // 2. Vérifier si le film existe déjà dans la BDD Globale
-        
-        let existingMovie = await Movie.findOne({ tmdb_id: movie });
-        if(!existingMovie) {
-          const result = await getMovieTreated({movieid: {tmdb_id: movie}})
-          // -- GESTION DES RÉALISATEURS --
-          const directorsIds = [];
-          for (const directorData of (result.DirectedBy || [])) {
-            const director = await Director.findOneAndUpdate(
-              { tmdb_director_id: directorData.tmdb_director_id }, // Recherche
-              { name: directorData.name, popularity: directorData.popularity }, // Mise à jour
-              { returnDocument: 'after', upsert: true } // Création si inexistant
-            );
-            directorsIds.push({ directorid: director._id });
-          };
+      // 2. Vérifier si le film existe déjà dans la BDD Globale
 
-              // -- GESTION DU CASTING --
-          const actorsIds = [];
-          for (const actorData of (result.Cast || [])) {
-            const castMember = await Cast.findOneAndUpdate(
-              { tmdb_actor_id: actorData.tmdb_actor_id },
-              { name: actorData.name, popularity: actorData.popularity },
-              { returnDocument: 'after', upsert: true }
-            );
-            actorsIds.push({ actorid: castMember._id }); 
-          }
-          
-          // -- GESTION DES GENRES --
+      let existingMovie = await Movie.findOne({ tmdb_id: movie });
+      if (!existingMovie) {
+        const result = await getMovieTreated({ movieid: { tmdb_id: movie } })
+        // -- GESTION DES RÉALISATEURS --
+        const directorsIds = [];
+        for (const directorData of (result.DirectedBy || [])) {
+          const director = await Director.findOneAndUpdate(
+            { tmdb_director_id: directorData.tmdb_director_id }, // Recherche
+            { name: directorData.name, popularity: directorData.popularity }, // Mise à jour
+            { returnDocument: 'after', upsert: true } // Création si inexistant
+          );
+          directorsIds.push({ directorid: director._id });
+        };
+
+        // -- GESTION DU CASTING --
+        const actorsIds = [];
+        for (const actorData of (result.Cast || [])) {
+          const castMember = await Cast.findOneAndUpdate(
+            { tmdb_actor_id: actorData.tmdb_actor_id },
+            { name: actorData.name, popularity: actorData.popularity },
+            { returnDocument: 'after', upsert: true }
+          );
+          actorsIds.push({ actorid: castMember._id });
+        }
+
+        // -- GESTION DES GENRES --
         const genresIds = [];
-        for (const genreData of (result.Genres || [])) { 
+        for (const genreData of (result.Genres || [])) {
           const genre = await Genre.findOneAndUpdate(
             { tmdb_genre_id: genreData.tmdb_genre_id },
             { name: genreData.name }, // Les genres n'ont généralement pas de popularité
@@ -287,56 +310,57 @@ router.post('/add-movies', async (req, res) => {
           MusicBy: composersIds,
           popularity: result.popularity
         });
-        const resultCloudinary = await cloudinary.uploader.upload(`https://image.tmdb.org/t/p/w500${result.poster_path}`, {use_filename: true, unique_filename: false});
+        const resultCloudinary = await cloudinary.uploader.upload(`https://image.tmdb.org/t/p/w500${result.poster_path}`, { use_filename: true, unique_filename: false });
         existingMovie = await newMovie.save();
-         // 5. Ajouter le film à l'utilisateur
+        // 5. Ajouter le film à l'utilisateur
         user.movies.push({
           movieid: existingMovie._id,
           isLoaned: false,
-          isLiked: false 
+          isLiked: false
         });
         await user.save();
-        
+
         return await result
-        } else {
+      } else {
 
-              // 4. Vérifier si le film est DÉJÀ dans la collection de L'UTILISATEUR
-          const isAlreadyInCollection = user.movies.some(
-            (m) => m.movieid && m.movieid.toString() === existingMovie._id.toString()
-          );
+        // 4. Vérifier si le film est DÉJÀ dans la collection de L'UTILISATEUR
+        const isAlreadyInCollection = user.movies.some(
+          (m) => m.movieid && m.movieid.toString() === existingMovie._id.toString()
+        );
 
-          if (isAlreadyInCollection) {
-            return await getMovieTreated({movieid: {tmdb_id: existingMovie.tmdb_id}});
-          }
-          // 5. Ajouter le film à l'utilisateur
+        if (isAlreadyInCollection) {
+          return await getMovieTreated({ movieid: { tmdb_id: existingMovie.tmdb_id } });
+        }
+        // 5. Ajouter le film à l'utilisateur
         user.movies.push({
           movieid: existingMovie._id,
           isLoaned: false,
-          isLiked: false 
+          isLiked: false
         });
         await user.save();
-        
-        return await getMovieTreated({movieid: {tmdb_id: existingMovie.tmdb_id}});
-        }
+
+        return await getMovieTreated({ movieid: { tmdb_id: existingMovie.tmdb_id } });
       }
-      )
-      )
-      res.status(200).send({result: true, answer: formattedMovies})
+    }
+    )
+    )
+    res.status(200).send({ result: true, answer: formattedMovies })
   } catch (error) {
     console.error("Erreur critique :", error);
     res.json({ result: false, error: 'Erreur interne du serveur' });
-  } 
+  }
 });
+
 //supprimer un film
 router.delete('/delete-movie/', async (req, res) => {
   try {
     if (!checkBody(req.body, ['token', 'tmdb_id'])) {
-    res.status(400).send({result: false, answer : 'Missing parameters'});
-    return;
-  }
+      res.status(400).send({ result: false, answer: 'Missing parameters' });
+      return;
+    }
 
     const user = await User.findOne({ token: req.body.token }).populate('movies.movieid');
-    
+
     if (!user) {
       return res.json({ result: false, error: 'Utilisateur non trouvé' });
     }
@@ -349,116 +373,86 @@ router.delete('/delete-movie/', async (req, res) => {
     }
     const userUpdate = await User.findOneAndUpdate(
       { token: req.body.token },
-      { $pull: { movies: { movieid: targetMovie[0].movieid._id } } }, 
-      { returnDocument: 'after' } 
+      { $pull: { movies: { movieid: targetMovie[0].movieid._id } } },
+      { returnDocument: 'after' }
     );
 
     console.log(`✅ VICTOIRE ! Il reste maintenant ${userUpdate.movies.length} films dans la collection.`);
     res.json({ result: true, message: 'Film supprimé avec succès !' });
-    
+
   } catch (error) {
     console.error("Erreur critique :", error);
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
+
+// Ajouter un prêt
 router.post('/add-loan', async (req, res) => {
-    try {
-      //on obtient l'Object_ID du film
-      const myID = await Movie.findOne({tmdb_id: req.body.tmdb_id}).select('_id');
+  try {
+    const myID = await Movie.findOne({ tmdb_id: req.body.tmdb_id }).select('_id');
 
-      //on créé le nouveau document de pastLoans
-      const newLoan = {
-          movieid: await myID._id,
-          isSharedToUser: req.body.isSharedToUser,
-          userid: (req.body.userid) ? req.body.userid : null,
-          borrower: (req.body.isSharedToUser) ? '' :(req.body.borrower),
-          dueDate: req.body.dueDate,
-          notes: (req.body.notes) ? req.body.notes : null,
-          Notification: (req.body.Notification) ? true : false
-        };
+    const newLoan = {
+      movieid: await myID._id,
+      isSharedToUser: req.body.isSharedToUser,
+      userid: (req.body.userid) ? req.body.userid : null,
+      borrower: (req.body.isSharedToUser) ? '' : (req.body.borrower),
+      dueDate: req.body.dueDate,
+      notes: (req.body.notes) ? req.body.notes : null,
+      Notification: (req.body.Notification) ? true : false
+    };
 
-      //On créé une variable de l'utilisateur
-      const user = await User.findOne({token: req.body.token});
-      if (user) {
-        //On va chercher dans quel index de movies se trouve le film séléctionné
-        const movieIndex = user.movies.findIndex(movie => movie.movieid.toString() == myID._id);
+    const user = await User.findOne({ token: req.body.token });
+    if (user) {
+      const movieIndex = user.movies.findIndex(movie => movie.movieid.toString() == myID._id);
 
-        if (movieIndex !== -1) {
-          //On ajoute notre document newLoan dans pastLoans
-          user.movies[movieIndex].pastLoans.push(newLoan);
-          user.movies[movieIndex].isLoaned = true;
-          if (req.body.notificationId) {
-            user.notifications = user.notifications.filter(
-              n => n._id.toString() !== req.body.notificationId
-            );
-          }
-          if (req.body.userid) {
-            user.movies[movieIndex].isAsked = user.movies[movieIndex].isAsked.filter(
-              id => id.toString() !== req.body.userid.toString()
-            );
-          }
-          await user.save();
-          if (req.body.userid && req.body.isSharedToUser) {
-            const friend = await User.findById(req.body.userid);
-            if (friend) {
-              friend.notifications.push({
-                type: 'loan_accepted',
-                senderId: user._id,
-                movieId: myID._id
-              });
-              await friend.save();
-            }
-          }
-
-          res.status(200).send({result: true, answer: user.movies[movieIndex].pastLoans })
-        } else {
-          res.status(200).send({result: false, error: 'Film introuvable' });
+      if (movieIndex !== -1) {
+        user.movies[movieIndex].pastLoans.push(newLoan);
+        user.movies[movieIndex].isLoaned = true;
+        
+        if (req.body.notificationId) {
+          user.notifications = user.notifications.filter(
+            n => n._id.toString() !== req.body.notificationId
+          );
         }
+        
+        if (req.body.userid) {
+          user.movies[movieIndex].isAsked = user.movies[movieIndex].isAsked.filter(
+            id => id.toString() !== req.body.userid.toString()
+          );
+        }
+        
+        await user.save();
+        
+        if (req.body.userid && req.body.isSharedToUser) {
+          const friend = await User.findById(req.body.userid);
+          if (friend) {
+            friend.notifications.push({
+              type: 'loan_accepted',
+              senderId: user._id,
+              movieId: myID._id
+            });
+            await friend.save();
+            
+            // 🌟 PUSH NOTIFICATION : Le prêt est accepté
+            await sendPushNotification(friend, "✅ Prêt accepté !", `${user.username} a accepté de vous prêter ce film.`);
+          }
+        }
+
+        res.status(200).send({ result: true, answer: user.movies[movieIndex].pastLoans })
       } else {
-        res.status(200).send({result: false, error: 'Utilisateur introuvable' })
+        res.status(200).send({ result: false, error: 'Film introuvable' });
       }
-      
-      
+    } else {
+      res.status(200).send({ result: false, error: 'Utilisateur introuvable' })
+    }
+
   } catch (error) {
     console.error("Erreur critique :", error);
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
-router.post('/remove-loan', async (req,res) => {
-  try { 
-    if (!checkBody(req.body, ['token', 'tmdb_id'])) {
-      res.status(400).send({result: false, answer : 'Missing parameters'});
-      return;
-    }
 
-    //on obtient l'Object_ID du film
-    const myID = await Movie.findOne({tmdb_id: req.body.tmdb_id}).select('_id');
-
-    //On créé une variable de l'utilisateur
-    const user = await User.findOne({token: req.body.token});
-
-    if (user) {
-      //On va chercher dans quel index de movies se trouve le film séléctionné
-      const movieIndex = user.movies.findIndex(movie => movie.movieid.toString() == myID._id);
-      console.log(movieIndex)
-      if (movieIndex !== -1) {  
-        user.movies[movieIndex].isLoaned = false;
-        await user.save().then(data => res.status(200).send({result: true, answer: user.movies[movieIndex]}));
-
-        
-      } else {
-        res.status(200).send({result: false, error: 'Film introuvable' });
-      }  
-    } else {
-      res.status(200).send({result: false, error: 'Utilisateur introuvable' })
-    }
-  } catch (error) {
-    console.error("Erreur critique :", error);
-    res.json({ result: false, error: 'Erreur serveur interne' });
-  }
-
-})
-// ROUTE : Mettre à jour le profil (Username, Email ou Mot de passe)
+// ROUTE : Mettre à jour le profil
 router.put('/update-profile', async (req, res) => {
   try {
     const { token, newUsername, newEmail, newPassword } = req.body;
@@ -475,14 +469,12 @@ router.put('/update-profile', async (req, res) => {
     let updates = {};
     if (newUsername) updates.username = newUsername;
     if (newEmail) updates.email = newEmail;
-    
-    // Si l'utilisateur veut changer son mot de passe, on le crypte d'abord
+
     if (newPassword) {
       const hash = bcrypt.hashSync(newPassword, 10);
       updates.password = hash;
     }
 
-    // On applique les modifications
     await User.updateOne({ token: token }, { $set: updates });
 
     res.json({ result: true, message: 'Profil mis à jour avec succès' });
@@ -537,6 +529,7 @@ router.delete('/user-collection', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur' });
   }
 });
+
 // ROUTE : Récupérer son code ami et sa liste d'amis
 router.post('/my-social-data', async (req, res) => {
   try {
@@ -545,8 +538,8 @@ router.post('/my-social-data', async (req, res) => {
     const user = await User.findOne({ token: token }).populate('friends.userid', 'username friendCode').populate('pendingRequests', 'username');
     if (!user) return res.json({ result: false, error: 'Utilisateur introuvable' });
 
-    res.json({ 
-      result: true, 
+    res.json({
+      result: true,
       friendCode: user.friendCode,
       friends: user.friends,
       pendingRequests: user.pendingRequests
@@ -557,6 +550,7 @@ router.post('/my-social-data', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur' });
   }
 });
+
 // ROUTE : Ajouter un ami via son Friend Code
 router.post('/add-friend', async (req, res) => {
   try {
@@ -572,7 +566,6 @@ router.post('/add-friend', async (req, res) => {
     const friend = await User.findOne({ friendCode: friendCodeToAdd.toUpperCase() });
     if (!friend) return res.json({ result: false, error: 'Code ami invalide' });
 
-    // 1. On vérifie s'ils sont déjà amis
     const alreadyFriends = user.friends.some(f => f.userid.toString() === friend._id.toString());
     if (alreadyFriends) {
       return res.json({ result: false, error: 'Vous êtes déjà amis avec cet utilisateur.' });
@@ -585,25 +578,27 @@ router.post('/add-friend', async (req, res) => {
       return res.json({ result: false, error: 'Une demande est déjà en attente pour cet utilisateur.' });
     }
 
-    //On pousse juste la notification chez l'ami
     friend.notifications.push({
       type: 'friend_request',
       senderId: user._id
     });
 
-    await friend.save(); // On sauvegarde l'envoi de la notification
+    await friend.save();
+    
+    // 🌟 PUSH NOTIFICATION : Demande d'ami
+    await sendPushNotification(friend, "👋 Nouvelle demande", `${user.username} veut rejoindre vos amis !`);
 
     user.pendingRequests.push(friend._id);
     await user.save();
 
-
-    res.json({ result: true, message: `Votre demande d'ami a bien été envoyée à ${friend.username} !`, answer: {_id: friend._id, username: friend.username} });
+    res.json({ result: true, message: `Votre demande d'ami a bien été envoyée à ${friend.username} !`, answer: { _id: friend._id, username: friend.username } });
 
   } catch (error) {
     console.error("Erreur ajout ami:", error);
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
+
 // ROUTE : Mettre à jour les permissions d'un ami
 router.put('/update-friend-permissions', async (req, res) => {
   try {
@@ -615,11 +610,11 @@ router.put('/update-friend-permissions', async (req, res) => {
 
     const updateResult = await User.updateOne(
       { token: token, "friends.userid": friendId },
-      { 
-        $set: { 
+      {
+        $set: {
           "friends.$.canSeeMyCollection": canSeeMyCollection,
-          "friends.$.canAskForMovies": canAskForMovies 
-        } 
+          "friends.$.canAskForMovies": canAskForMovies
+        }
       }
     );
 
@@ -634,7 +629,8 @@ router.put('/update-friend-permissions', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
-// ROUTE : Récupérer la collection d'un ami (si autorisé)
+
+// ROUTE : Récupérer la collection d'un ami
 router.post('/friend-collection', async (req, res) => {
   try {
     const { token, friendId } = req.body;
@@ -664,28 +660,25 @@ router.post('/friend-collection', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
+
 // ROUTE : Demander à emprunter un film
 router.post('/ask-movie', async (req, res) => {
   try {
     const { token, friendId, tmdb_id } = req.body;
 
-    // Sécurité : on vérifie que l'ID n'est pas vide
     if (!tmdb_id) return res.json({ result: false, error: 'ID du film manquant' });
 
     const me = await User.findOne({ token: token });
     if (!me) return res.json({ result: false, error: 'Utilisateur non trouvé' });
 
-    // 1. On peuple directement les films de l'ami pour y voir clair
     const friend = await User.findById(friendId).populate('movies.movieid');
     if (!friend) return res.json({ result: false, error: 'Ami introuvable' });
 
-    // 2. Vérification de tes droits
     const myPermissions = friend.friends.find(f => f.userid.toString() === me._id.toString());
     if (!myPermissions || !myPermissions.canAskForMovies) {
       return res.json({ result: false, error: 'Cet ami ne vous autorise pas à lui demander des films.' });
     }
 
-   
     const movieToAsk = friend.movies.find(m => m.movieid && m.movieid.tmdb_id == tmdb_id);
 
     if (!movieToAsk) {
@@ -695,16 +688,19 @@ router.post('/ask-movie', async (req, res) => {
       return res.json({ result: false, error: 'Impossible : ce film est déjà en cours de prêt.' });
     }
 
-    // 4. On vérifie si tu n'es pas déjà dans le tableau isAsked
     const alreadyAsked = movieToAsk.isAsked.some(id => id.toString() === me._id.toString());
     if (alreadyAsked) {
       return res.json({ result: false, error: 'Vous avez déjà demandé ce film !' });
     }
-   
+
     await User.updateOne(
       { _id: friend._id, "movies._id": movieToAsk._id },
-      { $push: { "movies.$.isAsked": me._id, "notifications": { type: 'loan_request', senderId: me._id, movieId: movieToAsk.movieid._id }}}
+      { $push: { "movies.$.isAsked": me._id, "notifications": { type: 'loan_request', senderId: me._id, movieId: movieToAsk.movieid._id } } }
     );
+    
+    // 🌟 PUSH NOTIFICATION : Demande de prêt
+    const movieTitle = movieToAsk.movieid.title_fr || movieToAsk.movieid.original_title;
+    await sendPushNotification(friend, "🍿 Demande de prêt", `${me.username} aimerait vous emprunter "${movieTitle}".`);
 
     res.json({ result: true, message: 'Votre demande a bien été envoyée à votre ami !' });
 
@@ -713,35 +709,32 @@ router.post('/ask-movie', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
-// Route: recevoir les notifications et vérifier les dates de fin de prêt
+
+// Route: recevoir les notifications
 router.get('/notifications/:token', async (req, res) => {
   try {
     const token = req.params.token;
-    
+
     const me = await User.findOne({ token: token })
-      .populate('movies.movieid') 
+      .populate('movies.movieid')
       .populate('notifications.senderId', 'username friendCode')
       .populate('notifications.movieId', 'title_fr original_title poster_path tmdb_id');
-      
+
     if (!me) {
       return res.json({ result: false, error: 'utilisateur non trouvé' });
     }
 
-    // VÉRIFICATION DES RETARDS 
     const today = new Date();
     let hasNewNotifications = false;
 
     me.movies.forEach(myMovie => {
-      // Si le film est prêté actuellement
       if (myMovie.isLoaned && myMovie.pastLoans && myMovie.pastLoans.length > 0) {
         const currentLoan = myMovie.pastLoans[myMovie.pastLoans.length - 1];
-        
-        // Si la date est dépassée
+
         if (currentLoan.dueDate && new Date(currentLoan.dueDate) < today && currentLoan.Notification === true) {
-          
-          // On vérifie qu'on n'a pas déjà généré cette notification pour ce film
-          const alreadyNotified = me.notifications.some(n => 
-            n.type === 'loan_expired' && 
+
+          const alreadyNotified = me.notifications.some(n =>
+            n.type === 'loan_expired' &&
             n.movieId && n.movieId._id.toString() === myMovie.movieid._id.toString()
           );
 
@@ -749,7 +742,7 @@ router.get('/notifications/:token', async (req, res) => {
             me.notifications.push({
               type: 'loan_expired',
               movieId: myMovie.movieid._id,
-              senderId: currentLoan.userid // Pour savoir à qui on a prêté
+              senderId: currentLoan.userid 
             });
             hasNewNotifications = true;
           }
@@ -757,7 +750,6 @@ router.get('/notifications/:token', async (req, res) => {
       }
     });
 
-    // Si on a ajouté de nouvelles notifications, on sauvegarde et on les peuple
     if (hasNewNotifications) {
       await me.save();
       await me.populate([
@@ -765,73 +757,69 @@ router.get('/notifications/:token', async (req, res) => {
         { path: 'notifications.movieId', select: 'title_fr original_title poster_path tmdb_id' }
       ]);
     }
-  
 
-    // tri exact pour afficher les plus récentes en premier
     const sortedNotifications = me.notifications.sort((a, b) => b.createdAt - a.createdAt);
-    
     res.json({ result: true, notifications: sortedNotifications });
-    
+
   } catch (error) {
     console.error("Erreur dans notifications :", error);
-    res.json({ result: false, error: 'Erreur serveur interne' }); 
+    res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
+
 router.post('/isLiked', async (req, res) => {
   if (!checkBody(req.body, ['token', 'tmdb_id'])) {
-      res.status(400).send({result: false, answer : 'Missing parameters'});
-      return;
+    res.status(400).send({ result: false, answer: 'Missing parameters' });
+    return;
   }
   try {
-    const user = await User.findOne({token: req.body.token});
-    const myID = await Movie.findOne({tmdb_id: req.body.tmdb_id}).select('_id');    
+    const user = await User.findOne({ token: req.body.token });
+    const myID = await Movie.findOne({ tmdb_id: req.body.tmdb_id }).select('_id');
     if (user) {
-        //On va chercher dans quel index de movies se trouve le film séléctionné
-        const movieIndex = user.movies.findIndex(movie => movie.movieid.toString() == myID._id);
-        if (movieIndex !== -1) {
-          //On ajoute notre document newLoan dans pastLoans
-          (user.movies[movieIndex].isLiked) ? user.movies[movieIndex].isLiked = false : user.movies[movieIndex].isLiked = true;
-          await user.save();
+      const movieIndex = user.movies.findIndex(movie => movie.movieid.toString() == myID._id);
+      if (movieIndex !== -1) {
+        (user.movies[movieIndex].isLiked) ? user.movies[movieIndex].isLiked = false : user.movies[movieIndex].isLiked = true;
+        await user.save();
 
-          res.status(200).send({result: true, answer: user.movies[movieIndex].isLiked })
-        } else {
-          res.status(200).send({result: false, error: 'Film introuvable' });
-        }
+        res.status(200).send({ result: true, answer: user.movies[movieIndex].isLiked })
       } else {
-        res.status(200).send({result: false, error: 'Utilisateur introuvable' })
+        res.status(200).send({ result: false, error: 'Film introuvable' });
       }
+    } else {
+      res.status(200).send({ result: false, error: 'Utilisateur introuvable' })
+    }
   } catch (error) {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
-})
+});
+
 // ROUTE : Refuser une demande de prêt
 router.post('/refuse-loan', async (req, res) => {
   try {
     const { token, tmdb_id, notificationId, requesterId } = req.body;
 
-    // 1. On récupère ton profil et on peuple tes films pour trouver le bon avec le tmdb_id
     const me = await User.findOne({ token: token }).populate('movies.movieid');
     if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
 
-    // 2. Nettoyage de ta boîte de réception (on supprime la notification)
     me.notifications = me.notifications.filter(n => n._id.toString() !== notificationId);
 
-    // 3. Nettoyage de la liste d'attente du film
     const myMovie = me.movies.find(m => m.movieid && m.movieid.tmdb_id === tmdb_id);
     if (myMovie) {
-        myMovie.isAsked = myMovie.isAsked.filter(id => id.toString() !== requesterId);
+      myMovie.isAsked = myMovie.isAsked.filter(id => id.toString() !== requesterId);
     }
-    await me.save(); // On sauvegarde tes modifications
+    await me.save(); 
 
-    // 4. Prévenir l'ami (envoi de la notification de refus)
     const friend = await User.findById(requesterId);
     if (friend && myMovie) {
-        friend.notifications.push({
-            type: 'loan_refused',
-            senderId: me._id,
-            movieId: myMovie.movieid._id
-        });
-        await friend.save();
+      friend.notifications.push({
+        type: 'loan_refused',
+        senderId: me._id,
+        movieId: myMovie.movieid._id
+      });
+      await friend.save();
+      
+      // 🌟 PUSH NOTIFICATION : Prêt refusé
+      await sendPushNotification(friend, "❌ Prêt refusé", `${me.username} n'a pas pu accepter votre demande de prêt.`);
     }
 
     res.json({ result: true, message: 'Demande refusée avec succès' });
@@ -841,17 +829,17 @@ router.post('/refuse-loan', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
+
 // ROUTE : Supprimer une notification
 router.post('/delete-notification', async (req, res) => {
   try {
     const { token, notificationId } = req.body;
-    
+
     const user = await User.findOne({ token: token });
     if (!user) return res.json({ result: false, error: 'Utilisateur introuvable' });
 
-    // On filtre le tableau pour garder toutes les notifications SAUF celle qu'on veut supprimer
     user.notifications = user.notifications.filter(n => n._id.toString() !== notificationId);
-    
+
     await user.save();
     res.json({ result: true, message: 'Notification supprimée' });
 
@@ -860,6 +848,7 @@ router.post('/delete-notification', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
+
 // ROUTE : Marquer toutes les notifications comme lues
 router.post('/mark-all-read', async (req, res) => {
   try {
@@ -868,7 +857,6 @@ router.post('/mark-all-read', async (req, res) => {
     const user = await User.findOne({ token: token });
     if (!user) return res.json({ result: false, error: 'Utilisateur introuvable' });
 
-    // On passe isRead à true pour toutes les notifications
     user.notifications.forEach(notification => {
       notification.isRead = true;
     });
@@ -881,12 +869,12 @@ router.post('/mark-all-read', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
+
 // route pour accepter un ami
 router.post('/accept-friend', async (req, res) => {
   try {
     const { token, notificationId, senderId } = req.body;
 
-    // 1. On cherche les deux utilisateurs
     const me = await User.findOne({ token: token });
     const friend = await User.findById(senderId);
 
@@ -894,18 +882,15 @@ router.post('/accept-friend', async (req, res) => {
       return res.json({ result: false, error: 'Utilisateur introuvable' });
     }
 
-    // 2. On vérifie s'ils ne sont pas déjà amis (sécurité)
     const alreadyFriends = me.friends.some(f => f.userid.toString() === senderId.toString());
-    
+
     if (!alreadyFriends) {
-      // 3. On ajoute l'ami chez moi avec les permissions par défaut
       me.friends.push({
         userid: friend._id,
         canSeeMyCollection: true,
         canAskForMovies: true
       });
 
-      // 4. On m'ajoute chez l'ami avec les permissions par défaut (réciproque)
       friend.friends.push({
         userid: me._id,
         canSeeMyCollection: true,
@@ -918,15 +903,17 @@ router.post('/accept-friend', async (req, res) => {
 
       friend.notifications.push({
         type: 'friend_accepted',
-        senderId: me._id // 
+        senderId: me._id 
       });
+
+      await friend.save();
       
-      await friend.save(); // On sauvegarde les modifications chez l'ami
+      // 🌟 PUSH NOTIFICATION : Ami accepté
+      await sendPushNotification(friend, "🤝 Nouvel ami !", `${me.username} a accepté votre demande.`);
     }
 
-    // 5. On supprime la notification de demande
     me.notifications = me.notifications.filter(n => n._id.toString() !== notificationId);
-    await me.save(); // On sauvegarde mes modifications
+    await me.save(); 
 
     res.json({ result: true, message: 'Ami ajouté avec succès !' });
 
@@ -935,6 +922,7 @@ router.post('/accept-friend', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
+
 //refuser un ami
 router.post('/refuse-friend', async (req, res) => {
   try {
@@ -945,9 +933,7 @@ router.post('/refuse-friend', async (req, res) => {
       return res.json({ result: false, error: 'Utilisateur introuvable' });
     }
 
-    // On se contente de supprimer la notification de la liste
     me.notifications = me.notifications.filter(n => n._id.toString() !== notificationId);
-    
     await me.save();
 
     if (senderId) {
@@ -956,12 +942,15 @@ router.post('/refuse-friend', async (req, res) => {
         friend.pendingRequests = friend.pendingRequests.filter(id => id.toString() !== me._id.toString());
       }
       friend.notifications.push({
-          type: 'friend_refused',
-          senderId: me._id 
-        });
+        type: 'friend_refused',
+        senderId: me._id
+      });
       await friend.save();
+      
+      // 🌟 PUSH NOTIFICATION : Ami refusé (Optionnel, mais garde la parité avec ton système in-app)
+      await sendPushNotification(friend, "❌ Demande refusée", `${me.username} a décliné votre demande.`);
     }
-    
+
     res.json({ result: true, message: 'Demande refusée et supprimée.' });
 
   } catch (error) {
@@ -969,6 +958,7 @@ router.post('/refuse-friend', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
+
 // ROUTE : Envoyer un rappel à un emprunteur
 router.post('/remind-loan', async (req, res) => {
   try {
@@ -981,9 +971,8 @@ router.post('/remind-loan', async (req, res) => {
       return res.json({ result: false, error: 'Utilisateur introuvable' });
     }
 
-    // Sécurité Anti-Spam : On vérifie si l'ami a DÉJÀ un rappel non supprimé pour ce film
-    const alreadyReminded = friend.notifications.some(n => 
-      n.type === 'loan_reminder' && 
+    const alreadyReminded = friend.notifications.some(n =>
+      n.type === 'loan_reminder' &&
       n.movieId && n.movieId.toString() === movieId.toString()
     );
 
@@ -991,7 +980,6 @@ router.post('/remind-loan', async (req, res) => {
       return res.json({ result: false, error: 'Un rappel a déjà été envoyé à cet utilisateur récemment.' });
     }
 
-    // On crée la notification chez l'ami
     friend.notifications.push({
       type: 'loan_reminder',
       senderId: me._id,
@@ -999,6 +987,9 @@ router.post('/remind-loan', async (req, res) => {
     });
 
     await friend.save();
+    
+    // 🌟 PUSH NOTIFICATION : Rappel de retour
+    await sendPushNotification(friend, "⏳ Rappel de retour", `${me.username} vous demande de lui rendre son film !`);
 
     res.json({ result: true, message: 'Un rappel a été envoyé à votre ami !' });
 
@@ -1008,30 +999,53 @@ router.post('/remind-loan', async (req, res) => {
   }
 });
 
-// ROUTE : Marquer un film comme récupéré (depuis le Modal ou MyShares)
+// ROUTE : Marquer un film comme récupéré 
 router.post('/remove-loan', async (req, res) => {
   try {
     const { token, tmdb_id } = req.body;
 
-    // On utilise populate pour pouvoir lire le tmdb_id du film
     const me = await User.findOne({ token: token }).populate('movies.movieid');
     if (!me) {
       return res.json({ result: false, error: 'Utilisateur introuvable' });
     }
 
-    // On cherche le film via son tmdb_id
     const movieIndex = me.movies.findIndex(m => m.movieid && m.movieid.tmdb_id === tmdb_id);
-    
+
     if (movieIndex !== -1) {
-      me.movies[movieIndex].isLoaned = false;
+      const myMovie = me.movies[movieIndex];
+
+      myMovie.isLoaned = false;
+
+      if (myMovie.pastLoans && myMovie.pastLoans.length > 0) {
+        const lastLoan = myMovie.pastLoans[myMovie.pastLoans.length - 1];
+        const borrowerId = lastLoan.userid;
+
+        if (borrowerId) {
+          const borrower = await User.findById(borrowerId);
+          if (borrower) {
+            borrower.notifications.push({
+              type: 'loan_returned',
+              senderId: me._id,
+              movieId: myMovie.movieid._id,
+              createdAt: new Date()
+            });
+            await borrower.save();
+            
+            // 🌟 PUSH NOTIFICATION : Film récupéré
+            await sendPushNotification(borrower, "🔄 Film récupéré", `${me.username} a bien récupéré son film. Merci !`);
+          } 
+        }
+      } 
+
       await me.save();
-      res.json({ result: true, message: 'Film récupéré !' });
+      res.json({ result: true, message: 'Film récupéré et emprunteur notifié !' });
+
     } else {
       res.json({ result: false, error: 'Film non trouvé dans la collection' });
     }
 
   } catch (error) {
-    console.error("Erreur /remove-loan :", error);
+    console.error("🚨 ERREUR CRITIQUE /remove-loan :", error);
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
@@ -1048,11 +1062,9 @@ router.delete('/remove-friend', async (req, res) => {
       return res.json({ result: false, error: 'Utilisateur introuvable' });
     }
 
-    // 1. On retire l'ami de ma liste
     me.friends = me.friends.filter(f => f.userid.toString() !== friendId.toString());
     await me.save();
 
-    // 2. On me retire de la liste de l'ami (réciproque)
     friend.friends = friend.friends.filter(f => f.userid.toString() !== me._id.toString());
     await friend.save();
 
@@ -1064,12 +1076,11 @@ router.delete('/remove-friend', async (req, res) => {
   }
 });
 
-// ROUTE : Récupérer les films prêtés et empruntés (My Shares)
+// ROUTE : Récupérer les films prêtés et empruntés
 router.post('/my-shares', async (req, res) => {
   try {
     const { token } = req.body;
 
-    // 1. On trouve l'utilisateur actuel (toi)
     const me = await User.findOne({ token: token }).populate('movies.movieid').populate({
       path: 'movies.pastLoans.userid',
       select: 'username',
@@ -1079,55 +1090,45 @@ router.post('/my-shares', async (req, res) => {
       return res.json({ result: false, error: 'Utilisateur introuvable' });
     }
 
-    // 2. MISSION A : Récupérer TES films prêtés
     const myLoanedMovies = me.movies
       .filter(movie => movie.isLoaned === true)
       .map(movie => {
         return {
           ...movie.toObject(),
-          shareType: 'loaned', 
+          shareType: 'loaned',
           ownerName: 'Moi'
         };
       });
 
-    // 3. MISSION B : Récupérer les films que TU as empruntés
     let myBorrowedMovies = [];
-    
-    // On cherche parmi tes amis (pour optimiser la recherche)
+
     const friendsIds = me.friends.map(f => f.userid);
-    
-    // On récupère les profils de tes amis avec leurs films peuplés
+
     const friends = await User.find({ _id: { $in: friendsIds } }).populate('movies.movieid');
 
-    // On fouille dans la collection de chaque ami
     for (const friend of friends) {
       const borrowedFromFriend = friend.movies
         .filter(movie => {
-          // Si le film n'est pas prêté ou n'a pas d'historique, on l'ignore
           if (!movie.isLoaned || !movie.pastLoans || movie.pastLoans.length === 0) return false;
-          
-          // On regarde le prêt EN COURS (le dernier du tableau)
+
           const currentLoan = movie.pastLoans[movie.pastLoans.length - 1];
-          
-          // On vérifie si c'est un prêt "in-app" et si le userid correspond à ton ID
-          return currentLoan.isSharedToUser && 
-                 currentLoan.userid && 
-                 currentLoan.userid.toString() === me._id.toString();
+
+          return currentLoan.isSharedToUser &&
+            currentLoan.userid &&
+            currentLoan.userid.toString() === me._id.toString();
         })
         .map(movie => {
           return {
             ...movie.toObject(),
-            shareType: 'borrowed', // 👈 L'autre étiquette magique
-            ownerName: friend.username, // On garde le nom du propriétaire pour l'afficher sur la fiche !
+            shareType: 'borrowed', 
+            ownerName: friend.username, 
             ownerId: friend._id
           };
         });
 
-      // On ajoute ces films trouvés à notre grande liste
       myBorrowedMovies = [...myBorrowedMovies, ...borrowedFromFriend];
     }
 
-    // 4. On fusionne les deux listes
     const allShares = [...myLoanedMovies, ...myBorrowedMovies];
 
     res.json({ result: true, shares: allShares });
@@ -1137,31 +1138,27 @@ router.post('/my-shares', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
+
 // ROUTE : Ajouter un avis sur un film
 router.post('/add-review', async (req, res) => {
   try {
     const { token, ownerId, tmdb_id, rating, comment } = req.body;
 
-    // 1. Identifier l'utilisateur qui poste l'avis
     const me = await User.findOne({ token: token });
     if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
 
-    // 🌟 LA CLÉ EST ICI : On récupère d'abord l'ID global du film (Comme dans ton add-loan !)
     const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id');
     if (!myMovieDB) return res.json({ result: false, error: 'Film inconnu dans la base' });
 
-    // 2. Identifier le propriétaire (SANS POPULATE ! Ça débloque la sauvegarde)
     const targetUserId = ownerId || me._id;
     const targetUser = await User.findById(targetUserId);
     if (!targetUser) return res.json({ result: false, error: 'Propriétaire introuvable' });
 
-    // 3. Trouver l'index exact du film dans sa collection
     const movieIndex = targetUser.movies.findIndex(m => m.movieid.toString() === myMovieDB._id.toString());
     if (movieIndex === -1) return res.json({ result: false, error: 'Film introuvable dans la collection' });
 
     const targetMovie = targetUser.movies[movieIndex];
 
-    // 🔒 4. VÉRIFICATIONS 
     if (targetUserId.toString() !== me._id.toString()) {
       const hasBorrowed = targetMovie.pastLoans.some(loan => {
         const borrowerId = loan.userid?._id || loan.userid;
@@ -1179,7 +1176,10 @@ router.post('/add-review', async (req, res) => {
       if (comment && comment.trim().length > 0 && !friendData.canComment) return res.json({ result: false, error: "L'auteur ne vous autorise pas à commenter." });
     }
 
+   const newReviewId = new mongoose.Types.ObjectId(); 
+
     const newReview = {
+      _id: newReviewId, //
       userid: me._id,
       rating: rating,
       comment: comment,
@@ -1192,11 +1192,29 @@ router.post('/add-review', async (req, res) => {
       { $push: { "movies.$.reviews": newReview } }
     );
 
-    // 🌟 NOTRE DÉTECTEUR DE MENSONGE :
-    console.log("Rapport MongoDB :", updateResult);
-
     if (updateResult.modifiedCount > 0) {
-      res.json({ result: true, message: 'Avis publié avec succès !' });
+      if (targetUserId.toString() !== me._id.toString()) {
+        await User.updateOne(
+          { _id: targetUser._id },
+          {
+            $push: {
+              notifications: {
+                type: 'review_posted',
+                senderId: me._id,     
+                movieId: myMovieDB._id 
+              }
+            }
+          }
+        );
+        // 🌟 PUSH NOTIFICATION : Nouvel avis
+        await sendPushNotification(
+          targetUser,
+          "🎬 Nouvel avis !",
+          `${me.username} a laissé un avis sur le film ${myMovieDB.title_fr || myMovieDB.original_title}.`
+        );
+      }
+
+      res.json({ result: true, message: 'Avis publié avec succès !', reviewId: newReviewId});
     } else {
       res.json({ result: false, error: 'MongoDB a refusé de sauvegarder.' });
     }
@@ -1206,5 +1224,340 @@ router.post('/add-review', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 });
-module.exports = router;  
 
+// ROUTE : Liker ou Unliker un avis
+router.post('/like-review', async (req, res) => {
+  try {
+    const { token, tmdb_id, reviewId } = req.body;
+
+    const me = await User.findOne({ token: token });
+    if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id');
+    if (!myMovieDB) return res.json({ result: false, error: 'Film inconnu' });
+
+    const movieIndex = me.movies.findIndex(m => m.movieid.toString() === myMovieDB._id.toString());
+    if (movieIndex === -1) return res.json({ result: false, error: 'Action interdite : Ce film n\'est pas dans votre collection' });
+
+    const reviewIndex = me.movies[movieIndex].reviews.findIndex(r => r._id.toString() === reviewId);
+    if (reviewIndex === -1) return res.json({ result: false, error: 'Avis introuvable' });
+
+    const review = me.movies[movieIndex].reviews[reviewIndex];
+
+    const alreadyLiked = review.likes.some(id => id.toString() === me._id.toString());
+    if (alreadyLiked) {
+      review.likes = review.likes.filter(id => id.toString() !== me._id.toString());
+    } else {
+      review.likes.push(me._id);
+    }
+
+    await me.save();
+
+    res.json({ result: true, message: 'Like mis à jour !' });
+
+  } catch (error) {
+    console.error("Erreur /like-review :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+// ROUTE : Répondre à un avis 
+router.post('/reply-review', async (req, res) => {
+  try {
+    const { token, tmdb_id, reviewId, text } = req.body;
+
+    if (!text || text.trim() === '') return res.json({ result: false, error: 'La réponse ne peut pas être vide' });
+
+    const me = await User.findOne({ token: token });
+    if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id');
+    if (!myMovieDB) return res.json({ result: false, error: 'Film inconnu' });
+
+    const movieIndex = me.movies.findIndex(m => m.movieid.toString() === myMovieDB._id.toString());
+    if (movieIndex === -1) return res.json({ result: false, error: 'Action interdite : Ce film n\'est pas dans votre collection' });
+
+    const reviewIndex = me.movies[movieIndex].reviews.findIndex(r => r._id.toString() === reviewId);
+    if (reviewIndex === -1) return res.json({ result: false, error: 'Avis introuvable' });
+
+    const newReply = {
+      userid: me._id,
+      text: text,
+      createdAt: new Date()
+    };
+
+    me.movies[movieIndex].reviews[reviewIndex].replies.push(newReply);
+    await me.save();
+
+    res.json({ result: true, message: 'Réponse publiée avec succès !' });
+
+  } catch (error) {
+    console.error("Erreur /reply-review :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+//sauvegarder le push token
+router.post('/save-push-token', async (req, res) => {
+  try {
+    const { token, pushToken } = req.body;
+
+    if (!token || !pushToken) {
+      return res.json({ result: false, error: 'Paramètres manquants' });
+    }
+
+    const user = await User.findOne({ token: token });
+    if (!user) {
+      return res.json({ result: false, error: 'Utilisateur introuvable' });
+    }
+
+    user.pushToken = pushToken;
+    await user.save();
+
+    res.json({ result: true, message: 'Push Token sauvegardé avec succès !' });
+
+  } catch (error) {
+    console.error("Erreur /save-push-token :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+
+// ROUTE : Modifier un avis (Note et/ou Commentaire)
+
+router.put('/edit-review', async (req, res) => {
+  try {
+    const { token, tmdb_id, reviewId, newRating, newComment } = req.body;
+
+    // 1. Authentifier l'utilisateur demandeur
+    const me = await User.findOne({ token: token });
+    if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    // 2. Trouver le film dans la base globale
+    const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id');
+    if (!myMovieDB) return res.json({ result: false, error: 'Film inconnu' });
+
+    // 3. Trouver le propriétaire du film qui héberge la review
+    // (On cherche l'utilisateur qui possède ce film ET cet avis précis)
+    const targetUser = await User.findOne({
+      "movies.movieid": myMovieDB._id,
+      "movies.reviews._id": reviewId
+    });
+    if (!targetUser) return res.json({ result: false, error: 'Avis ou film introuvable chez les utilisateurs' });
+
+    // 4. Extraction de l'avis pour vérification de sécurité
+    const movieData = targetUser.movies.find(m => m.movieid.toString() === myMovieDB._id.toString());
+    const reviewData = movieData.reviews.find(r => r._id.toString() === reviewId);
+
+    // Sécurité critique : Es-tu bien l'auteur de cet avis ?
+    if (reviewData.userid.toString() !== me._id.toString()) {
+      return res.json({ result: false, error: "Action interdite : Vous n'êtes pas l'auteur de cet avis" });
+    }
+
+    // 5. Mise à jour chirurgicale dans MongoDB en utilisant les identifiants
+    // On utilise $[movie] et $[review] (positional filtering) pour cibler précisément l'élément imbriqué
+    await User.updateOne(
+      { _id: targetUser._id },
+      { 
+        $set: { 
+          "movies.$[movie].reviews.$[review].rating": newRating,
+          "movies.$[movie].reviews.$[review].comment": newComment,
+          "movies.$[movie].reviews.$[review].updatedAt": new Date() // Optionnel : pour savoir s'il a été modifié
+        } 
+      },
+      {
+        arrayFilters: [
+          { "movie.movieid": myMovieDB._id },
+          { "review._id": reviewId }
+        ]
+      }
+    );
+
+    res.json({ result: true, message: 'Avis modifié avec succès !' });
+
+  } catch (error) {
+    console.error("Erreur /edit-review :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+
+//ROUTE : Supprimer un avis
+
+router.delete('/delete-review', async (req, res) => {
+  try {
+    const { token, tmdb_id, reviewId } = req.body;
+    
+    console.log("-----------------------------------------");
+    console.log("🗑️ [DELETE] Requête reçue !");
+    console.log("👉 tmdb_id :", tmdb_id);
+    console.log("👉 reviewId :", reviewId);
+
+    // 1. Authentifier l'utilisateur
+    const me = await User.findOne({ token: token });
+    if (!me) {
+      console.log("❌ Utilisateur non trouvé");
+      return res.json({ result: false, error: 'Utilisateur introuvable' });
+    }
+
+    // 2. Trouver le film
+    const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id');
+    if (!myMovieDB) {
+      console.log("❌ Film non trouvé dans la BDD Globale");
+      return res.json({ result: false, error: 'Film inconnu' });
+    }
+
+    // 3. Trouver le propriétaire de la collection qui contient cet avis précis
+    const targetUser = await User.findOne({
+      "movies.movieid": myMovieDB._id,
+      "movies.reviews._id": reviewId
+    });
+
+    if (!targetUser) {
+      console.log("❌ Impossible de trouver un utilisateur possédant ce film ET cet avis (reviewId incorrect ?)");
+      return res.json({ result: false, error: 'Avis introuvable dans la base' });
+    }
+
+    // 4. Vérification de sécurité
+    const movieData = targetUser.movies.find(m => m.movieid.toString() === myMovieDB._id.toString());
+    const reviewData = movieData.reviews.find(r => r._id.toString() === reviewId);
+
+    const isAuthor = reviewData.userid.toString() === me._id.toString();
+    const isOwner = targetUser._id.toString() === me._id.toString();
+
+    console.log(`👤 isAuthor : ${isAuthor} | isOwner : ${isOwner}`);
+
+    if (!isAuthor && !isOwner) {
+      console.log("❌ Action interdite (droits insuffisants)");
+      return res.json({ result: false, error: "Action interdite : Vous n'avez pas les droits pour supprimer cet avis." });
+    }
+
+    // 5. Suppression
+    const updateResult = await User.updateOne(
+      { _id: targetUser._id, "movies.movieid": myMovieDB._id },
+      { $pull: { "movies.$.reviews": { _id: reviewId } } }
+    );
+
+    console.log("✅ Résultat MongoDB :", updateResult);
+    console.log("-----------------------------------------");
+
+    res.json({ result: true, message: 'Avis supprimé avec succès !' });
+
+  } catch (error) {
+    console.error("🚨 Erreur critique /delete-review :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+
+// 🌟 ROUTE : Modifier une réponse
+
+router.put('/edit-reply', async (req, res) => {
+  try {
+    const { token, tmdb_id, reviewId, replyId, newText } = req.body;
+
+    const me = await User.findOne({ token: token });
+    if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id');
+    if (!myMovieDB) return res.json({ result: false, error: 'Film inconnu' });
+
+    const targetUser = await User.findOne({
+      "movies.movieid": myMovieDB._id,
+      "movies.reviews._id": reviewId,
+      "movies.reviews.replies._id": replyId
+    });
+    if (!targetUser) return res.json({ result: false, error: 'Réponse introuvable' });
+
+    const movieData = targetUser.movies.find(m => m.movieid.toString() === myMovieDB._id.toString());
+    const reviewData = movieData.reviews.find(r => r._id.toString() === reviewId);
+    const replyData = reviewData.replies.find(rep => rep._id.toString() === replyId);
+
+    // 🔒 SÉCURITÉ STRICTE : Seul l'Auteur peut modifier sa propre réponse
+    if (replyData.userid.toString() !== me._id.toString()) {
+      return res.json({ result: false, error: "Action interdite : Vous ne pouvez pas modifier les mots de quelqu'un d'autre." });
+    }
+
+    // Mise à jour ciblée avec les arrayFilters pour descendre de 3 niveaux (Film -> Avis -> Réponse)
+    await User.updateOne(
+      { _id: targetUser._id },
+      { 
+        $set: { 
+          "movies.$[movie].reviews.$[review].replies.$[reply].text": newText
+        } 
+      },
+      {
+        arrayFilters: [
+          { "movie.movieid": myMovieDB._id },
+          { "review._id": reviewId },
+          { "reply._id": replyId }
+        ]
+      }
+    );
+
+    res.json({ result: true, message: 'Réponse modifiée avec succès !' });
+
+  } catch (error) {
+    console.error("Erreur /edit-reply :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+
+//ROUTE : Supprimer une réponse
+
+router.delete('/delete-reply', async (req, res) => {
+  try {
+    const { token, tmdb_id, reviewId, replyId } = req.body;
+
+    const me = await User.findOne({ token: token });
+    if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id');
+    if (!myMovieDB) return res.json({ result: false, error: 'Film inconnu' });
+
+    const targetUser = await User.findOne({
+      "movies.movieid": myMovieDB._id,
+      "movies.reviews._id": reviewId
+    });
+    if (!targetUser) return res.json({ result: false, error: 'Avis introuvable' });
+
+    const movieData = targetUser.movies.find(m => m.movieid.toString() === myMovieDB._id.toString());
+    const reviewData = movieData.reviews.find(r => r._id.toString() === reviewId);
+    const replyData = reviewData.replies.find(rep => rep._id.toString() === replyId);
+
+    if (!replyData) return res.json({ result: false, error: 'Réponse introuvable' });
+
+    // 🔒 SÉCURITÉ DE MODÉRATION : Auteur de la réponse OU Propriétaire du film
+    const isAuthor = replyData.userid.toString() === me._id.toString();
+    const isOwner = targetUser._id.toString() === me._id.toString();
+
+    if (!isAuthor && !isOwner) {
+      return res.json({ result: false, error: "Action interdite : Vous n'avez pas les droits pour supprimer cette réponse." });
+    }
+
+    // Suppression (Pull) de la réponse spécifique
+    await User.updateOne(
+      { _id: targetUser._id },
+      { 
+        $pull: { 
+          "movies.$[movie].reviews.$[review].replies": { _id: replyId } 
+        } 
+      },
+      {
+        arrayFilters: [
+          { "movie.movieid": myMovieDB._id },
+          { "review._id": reviewId }
+        ]
+      }
+    );
+
+    res.json({ result: true, message: 'Réponse supprimée avec succès !' });
+
+  } catch (error) {
+    console.error("Erreur /delete-reply :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
+module.exports = router;

@@ -5,6 +5,7 @@ const userSchema = new mongoose.Schema({
   password: {type: String, required: true, unique: false},
   email: {type: String, required: true, unique: true},
   token: {type: String, required: true, unique: true},
+  pushToken: { type: String, required: false },
   friendCode: {type: String, unique: true, sparse: true},
   friends: [{ 
             userid: {type: mongoose.Schema.Types.ObjectId, ref:'users'}, 
@@ -55,7 +56,7 @@ const userSchema = new mongoose.Schema({
             type: {
               type: String,
               required: true,
-              enum: ['friend_request', 'friend_accepted', 'friend_refused', 'loan_request', 'loan_reminder', 'loan_accepted', 'loan_refused', 'loan_expired']
+              enum: ['friend_request', 'friend_accepted', 'friend_refused', 'loan_request', 'loan_reminder', 'loan_accepted', 'loan_refused', 'loan_expired', 'loan_returned', 'review_posted']
             },
             senderId: {type: mongoose.Schema.Types.ObjectId, ref:'users', required: false},
             movieId: {type: mongoose.Schema.Types.ObjectId, ref:'movies', required: false},
