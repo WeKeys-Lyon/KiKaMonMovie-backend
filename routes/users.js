@@ -351,6 +351,35 @@ router.post('/add-movies', async (req, res) => {
   }
 });
 
+// ROUTE : Récupérer sa propre collection (Pull-to-Refresh)
+
+router.get('/collection/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    // 1. Trouver l'utilisateur et peupler les données brutes des films
+    const user = await User.findOne({ token: token }).populate({ path: 'movies.movieid', model: Movie });
+    
+    if (!user) {
+      return res.json({ result: false, error: 'Utilisateur introuvable' });
+    }
+
+    // 2. Formater les films avec ta fonction getMovieTreated (comme dans le signin)
+    if (user.movies && user.movies.length > 0) {
+      const formattedMovies = await Promise.all(user.movies.map(async movie => {
+        return await getMovieTreated(movie);
+      }));
+      res.json({ result: true, movies: formattedMovies });
+    } else {
+      res.json({ result: true, movies: [] });
+    }
+
+  } catch (error) {
+    console.error("Erreur /collection/:token :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
+
 //supprimer un film
 router.delete('/delete-movie/', async (req, res) => {
   try {
