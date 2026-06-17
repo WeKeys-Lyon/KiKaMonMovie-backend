@@ -1038,7 +1038,7 @@ router.post('/remove-loan', async (req, res) => {
       return res.json({ result: false, error: 'Utilisateur introuvable' });
     }
 
-    const movieIndex = me.movies.findIndex(m => m.movieid && m.movieid.tmdb_id === tmdb_id);
+    const movieIndex = me.movies.findIndex(m => m.movieid && m.movieid.tmdb_id === parseInt(tmdb_id));
 
     if (movieIndex !== -1) {
       const myMovie = me.movies[movieIndex];
