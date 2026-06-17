@@ -90,15 +90,13 @@ router.get('/searchid/:id', async (req, res) => {
 router.get('/searchean/:id', async (req, res) => {
   if (req.params.id) {
 
-    const myURL = `http://gapi.wekeys.fr:7000/ecosia/search?text='EAN ${req.params.id}'&limit=1`;
+    const myURL = `http://gapi.wekeys.fr:7000/google/search?text='EAN ${req.params.id}'&limit=1`;
     const response = await fetch(encodeURI(myURL));
     const data = await response.json();
     
     (data.results) ? res.status(200).send({result: true, answer: data.results[0].title}) : res.status(200).send({result: false, error: 'La recherche n\'a rien donné'});
-    return;
   } else {
     res.status(200).send({result: false, error: 'Manque le paramètre ID req.params.id'});
-    return
   }
 })
 
