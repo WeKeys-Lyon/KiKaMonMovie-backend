@@ -79,7 +79,7 @@ router.post('/signin', async (req, res) => {
     const userExists = await User.findOne({
       $or: [{ username: req.body.mylogin }, { email: req.body.mylogin }]
     });
-
+    
     // Sécurité : Si l'utilisateur n'existe pas du tout
     if (!userExists) {
       return res.status(400).send({ result: false, answer: 'User not found or wrong password' });

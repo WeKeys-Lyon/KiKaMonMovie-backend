@@ -16,7 +16,7 @@ describe('Test des routes Users', () => {
     const response = await request(app)
       .post('/users/signin')
       .send({
-        email: 'hacker@pirate.com',
+        mylogin: 'hacker@pirate.com',
         password: 'mauvaismotdepasse'
       });
 
