@@ -19,7 +19,7 @@ const fs = require('fs');
 const { Expo } = require('expo-server-sdk');
 const expo = new Expo(); // Initialise le "traducteur" Expo
 
-// 🌟 NOTRE HELPER : Une fonction réutilisable pour envoyer des notifications
+// fonction réutilisable pour envoyer des notifications
 const sendPushNotification = async (user, title, body, data = {}) => {
   // On vérifie directement si l'utilisateur a un Token valide
   if (user.pushToken && Expo.isExpoPushToken(user.pushToken)) {
@@ -39,6 +39,8 @@ const sendPushNotification = async (user, title, body, data = {}) => {
   }
 };
 
+const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\da-zA-Z]).{8,}$/;
+
 // inscription d'un nouvel utilisateur
 router.post('/signup', async (req, res) => {
   if (!checkBody(req.body, ['username', 'password', 'email'])) {
@@ -48,6 +50,12 @@ router.post('/signup', async (req, res) => {
   if (!checkEmail(req.body.email)) {
     res.status(400).send({ result: false, answer: 'Invalid email' });
     return;
+  }
+  if (!checkPassword(password)) {
+    return res.status(400).json({ 
+      result: false, 
+      answer: "Le mot de passe doit contenir au moins 8 caractères, 1 majuscule, 1 minuscule, 1 chiffre et 1 caractère spécial." 
+    });
   }
   const userExists = await User.findOne({ username: req.body.username });
   if (userExists) {

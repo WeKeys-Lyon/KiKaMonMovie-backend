@@ -32,6 +32,15 @@ function checkUsername(username) {
   });
 }
 
+// modules/checkPassword.js
+
+function checkPassword(password) {
+  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\da-zA-Z]).{8,}$/;
+  return passwordRegex.test(password);
+}
+
+module.exports = { checkPassword };
+
 
 
 module.exports = { checkBody, checkUsername, checkEmail };
