@@ -18,6 +18,8 @@ const fs = require('fs');
 
 const { Expo } = require('expo-server-sdk');
 const expo = new Expo(); // Initialise le "traducteur" Expo
+const { OAuth2Client } = require('google-auth-library');
+const client = new OAuth2Client('187088415795-98fvq75vn2t5o4kck36oe8ubbbb894t3.apps.googleusercontent.com');
 
 // fonction réutilisable pour envoyer des notifications
 const sendPushNotification = async (user, title, body, data = {}) => {
@@ -137,6 +139,87 @@ router.post('/signin', async (req, res) => {
   } catch (error) {
     console.error("Erreur dans signin :", error);
     res.status(500).send({ result: false, answer: 'Internal server error' });
+  }
+});
+
+router.post('/google-login', async (req, res) => {
+  const { token } = req.body;
+
+  if (!token) {
+    return res.status(400).json({ result: false, error: "Token manquant" });
+  }
+
+  try {
+    // 🛡️ 1. LE SERVEUR VÉRIFIE LE TOKEN AUPRÈS DE GOOGLE
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: 'TON_CLIENT_ID_WEB_ICI.apps.googleusercontent.com',  // La même clé !
+    });
+    
+    // 2. On extrait les données certifiées par Google
+    const payload = ticket.getPayload();
+    const email = payload.email;
+    const googleName = payload.name || "UserGoogle";
+
+    // 3. On cherche si cet utilisateur existe déjà dans ta base de données MongoDB
+    let user = await User.findOne({ email: email })
+        // .populate('movies.movieid') <-- N'oublie pas de faire tes populates habituels si besoin !
+        // .populate('friends')
+        
+    if (user) {
+      // ✅ CAS A : L'utilisateur existe déjà -> On le connecte !
+      res.json({
+        result: true,
+        answer: {
+          _id: user._id,
+          token: user.token, // Le token de TON backend
+          email: user.email,
+          username: user.username,
+          movies: user.movies,
+          friends: user.friends,
+          friendCode: user.friendCode,
+          notifications: user.notifications
+        }
+      });
+
+    } else {
+      // 🌟 CAS B : C'est un nouvel utilisateur -> On lui crée un compte automatiquement !
+      
+      // On génère un mot de passe aléatoire très long (car il n'en a pas besoin via Google)
+      const randomPassword = uid2(16);
+      const hash = bcrypt.hashSync(randomPassword, 10);
+      
+      const newUser = new User({
+        email: email,
+        username: googleName, // On prend son prénom Google par défaut
+        password: hash,
+        token: uid2(32), // On lui génère son jeton de session
+        friendCode: uid2(6).toUpperCase(), // On lui crée un code ami
+        movies: [],
+        friends: [],
+        notifications: []
+      });
+
+      const savedUser = await newUser.save();
+
+      res.json({
+        result: true,
+        answer: {
+          _id: savedUser._id,
+          token: savedUser.token,
+          email: savedUser.email,
+          username: savedUser.username,
+          movies: savedUser.movies,
+          friends: savedUser.friends,
+          friendCode: savedUser.friendCode,
+          notifications: savedUser.notifications
+        }
+      });
+    }
+
+  } catch (error) {
+    console.error("Erreur de vérification Google :", error);
+    res.status(401).json({ result: false, error: "Le token Google est invalide ou a expiré." });
   }
 });
 
