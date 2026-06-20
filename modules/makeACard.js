@@ -91,6 +91,12 @@ async function getMovieTreated(moviedata, poster_type) {
             for (let i = 0; i < moviedata.reviews.length; i++) {
                 const getUsername = await User.findOne({ _id: moviedata.reviews[i].userid }).select('username _id');
                 moviedata.reviews[i].userid = getUsername
+                if (moviedata.reviews[i].replies.length > 0) {
+                    for (let j = 0; j < moviedata.reviews[i].replies.length; j++) {
+                    const getUsername = await User.findOne({ _id: moviedata.reviews[i].replies[j].userid }).select('username _id');
+                    moviedata.reviews[i].replies[j].userid = getUsername
+                    }
+                }
             }
         }
         const formattedOfflineMovie = {
