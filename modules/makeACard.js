@@ -1,4 +1,5 @@
 const Movie = require("../models/movies");
+const User = require("../models/users");
 const TMDB_BEARER = process.env.TMDB_BEARER;
 const base_API = `https://api.themoviedb.org/`
 const options_get = {
@@ -86,6 +87,12 @@ async function getMovieTreated(moviedata, poster_type) {
         .populate('MusicBy.composerid');
     
     if (getMyMovieOffline) {
+        if (moviedata.reviews.length > 0) {
+            for (let i = 0; i < moviedata.reviews.length; i++) {
+                const getUsername = await User.findOne({ _id: moviedata.reviews[i].userid }).select('username _id');
+                moviedata.reviews[i].userid = getUsername
+            }
+        }
         const formattedOfflineMovie = {
             tmdb_id: getMyMovieOffline.tmdb_id,
             original_title: getMyMovieOffline.original_title,

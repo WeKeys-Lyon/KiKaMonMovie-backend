@@ -101,7 +101,7 @@ router.post('/signin', async (req, res) => {
       async function getLocalMovies(userData) {
         //  4.1 Fonction qui prends les movieid de l'utilisateur, puis va sortir les résultats bien formatés
         if (userData.movies) {
-
+          console.log(userData.movies.reviews)
           const myResults = await Promise.all(userData.movies.map(async movie => {
             /* let myMovies = {id: movie.movieid.tmdb_id} */
 
@@ -1381,7 +1381,6 @@ router.post('/save-push-token', async (req, res) => {
 
 
 // ROUTE : Modifier un avis (Note et/ou Commentaire)
-
 router.put('/edit-review', async (req, res) => {
   try {
     const { token, tmdb_id, reviewId, newRating, newComment } = req.body;
@@ -1440,7 +1439,6 @@ router.put('/edit-review', async (req, res) => {
 
 
 //ROUTE : Supprimer un avis
-
 router.delete('/delete-review', async (req, res) => {
   try {
     const { token, tmdb_id, reviewId } = req.body;
@@ -1508,7 +1506,6 @@ router.delete('/delete-review', async (req, res) => {
 
 
 // 🌟 ROUTE : Modifier une réponse
-
 router.put('/edit-reply', async (req, res) => {
   try {
     const { token, tmdb_id, reviewId, replyId, newText } = req.body;
@@ -1562,7 +1559,6 @@ router.put('/edit-reply', async (req, res) => {
 
 
 //ROUTE : Supprimer une réponse
-
 router.delete('/delete-reply', async (req, res) => {
   try {
     const { token, tmdb_id, reviewId, replyId } = req.body;
@@ -1617,4 +1613,26 @@ router.delete('/delete-reply', async (req, res) => {
   }
 });
 
+router.post('/get-username', async (req, res) => {
+    try {
+    // 1. Vérification des champs
+      if (!checkBody(req.body, ['token', 'userid'])) {
+        return res.status(400).send({ result: false, answer: 'Missing parameters' });
+      }
+    // 2. Obtention du username
+    const { token, userid } = req.body;
+
+    const me = await User.findOne({ token: token });
+    if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    const userToSearch = await User.findOne({ _id: userid }).select('username -_id');
+    if (!userToSearch) return res.json({ result: false, error: 'Utilisateur introuvable' });
+
+    res.json({ result: true, answer: userToSearch });
+
+  } catch (error) {
+    console.error("Erreur /edit-reply :", error);
+    res.json({ result: false, error: 'Erreur serveur interne' });
+  }
+})
 module.exports = router;
