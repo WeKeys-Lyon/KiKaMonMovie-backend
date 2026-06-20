@@ -20,8 +20,6 @@ const userSchema = new mongoose.Schema({
   }],
   movies: [{
             movieid: {type: mongoose.Schema.Types.ObjectId, ref:'movies', unique: true},
-            ranking: {type: Number, required: false},
-            review: {type: String, required: false},
             isLoaned: {type: Boolean, required: true},
             physical_format: [{type: mongoose.Schema.Types.ObjectId, ref:'physical'}],
             pastLoans: [{
