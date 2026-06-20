@@ -1344,10 +1344,10 @@ router.post('/reply-review', async (req, res) => {
     };
 
     me.movies[movieIndex].reviews[reviewIndex].replies.push(newReply);
-    await me.save();
-
-    res.json({ result: true, message: 'Réponse publiée avec succès !' });
-
+    await me.save().then(data => {
+      res.status(200).send({ result: true, message: 'Réponse publiée avec succès !', answer: data})
+    });
+    
   } catch (error) {
     console.error("Erreur /reply-review :", error);
     res.json({ result: false, error: 'Erreur serveur interne' });
