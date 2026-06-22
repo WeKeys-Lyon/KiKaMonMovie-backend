@@ -85,8 +85,8 @@ async function getMovieTreated(moviedata, poster_type) {
         .populate('Cast.actorid')
         .populate('Genres.genreid')
         .populate('MusicBy.composerid');
-    
-    if (getMyMovieOffline) {
+    console.log(getMyMovieOffline)
+    if (getMyMovieOffline.popul) {
         if (moviedata.reviews.length > 0) {
             for (let i = 0; i < moviedata.reviews.length; i++) {
                 const getUsername = await User.findOne({ _id: moviedata.reviews[i].userid }).select('username _id');
@@ -122,6 +122,7 @@ async function getMovieTreated(moviedata, poster_type) {
             pastLoans: moviedata.pastLoans || [],
             reviews: moviedata.reviews || [],
             isAsked: moviedata.isAsked || false,
+            popularity: getMyMovieOffline.popularity || null
         };
         return formattedOfflineMovie;            
     } else {
