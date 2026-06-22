@@ -85,8 +85,8 @@ async function getMovieTreated(moviedata, poster_type) {
         .populate('Cast.actorid')
         .populate('Genres.genreid')
         .populate('MusicBy.composerid');
-    console.log(getMyMovieOffline)
-    if (getMyMovieOffline.popul) {
+
+    if (getMyMovieOffline) {
         if (moviedata.reviews.length > 0) {
             for (let i = 0; i < moviedata.reviews.length; i++) {
                 const getUsername = await User.findOne({ _id: moviedata.reviews[i].userid }).select('username _id');
