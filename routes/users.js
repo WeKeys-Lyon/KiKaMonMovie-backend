@@ -1635,4 +1635,42 @@ router.post('/get-username', async (req, res) => {
     res.json({ result: false, error: 'Erreur serveur interne' });
   }
 })
+
+router.post('/get-one-movie', async (req, res) => {
+  try {
+    const { token, ownerId, tmdb_id } = req.body;
+
+    if (!token || !ownerId || !tmdb_id) {
+      return res.status(400).json({ result: false, error: 'Paramètres manquants' });
+    }
+
+    // 1. Vérifier si le demandeur existe
+    const me = await User.findOne({ token: token });
+    if (!me) return res.json({ result: false, error: 'Utilisateur non autorisé' });
+
+    // 2. Trouver le propriétaire du film
+    const owner = await User.findById(ownerId).populate('movies.movieid');
+    if (!owner) return res.json({ result: false, error: 'Propriétaire introuvable' });
+
+    // 3. Trouver le film exact dans sa collection
+    const targetMovie = owner.movies.find(m => m.movieid && String(m.movieid.tmdb_id) === String(tmdb_id));
+    
+    if (!targetMovie) {
+      return res.json({ result: false, error: 'Ce film n\'est plus dans la collection' });
+    }
+
+    // 4. Formater le film avec tes acteurs, réalisateurs, avis...
+    const formattedMovie = await getMovieTreated(targetMovie);
+
+    if (formattedMovie) {
+      res.json({ result: true, movie: formattedMovie });
+    } else {
+      res.json({ result: false, error: 'Erreur lors du formatage du film' });
+    }
+
+  } catch (error) {
+    console.error("Erreur /get-one-movie :", error);
+    res.status(500).json({ result: false, error: 'Erreur serveur interne' });
+  }
+});
 module.exports = router;
