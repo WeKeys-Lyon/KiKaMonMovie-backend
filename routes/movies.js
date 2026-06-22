@@ -90,8 +90,7 @@ router.get('/searchid/:id', async (req, res) => {
 router.get('/searchean/:id', async (req, res) => {
   if (req.params.id) {
 
-    const myURL = `http://gapi.wekeys.fr:7000/mega/search?engines=duckduckgo&text=${req.params.id}&limit=2`;
-    console.log(myURL)
+    const myURL = `http://gapi.wekeys.fr:7000/mega/search?engines=duckduckgo&text=${req.params.id}&limit=1`;
     const response = await fetch(encodeURI(myURL));
     const data = await response.json();
     
