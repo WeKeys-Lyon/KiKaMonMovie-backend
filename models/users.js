@@ -48,7 +48,7 @@ const userSchema = new mongoose.Schema({
               createdAt: {type: Date, required: true, default: Date.now}
             }]
 
-  }], // 👈 On ferme "movies" ICI maintenant !
+  }], 
   
   notifications: [{
             type: {
@@ -60,7 +60,8 @@ const userSchema = new mongoose.Schema({
             movieId: {type: mongoose.Schema.Types.ObjectId, ref:'movies', required: false},
             isRead: {type: Boolean, required: true, default: false}, 
             createdAt: {type: Date, required: true, default: Date.now}
-  }]
+  }],
+  avatar: { type: String, default: 'default' },
 });
 
 const User = mongoose.model('users', userSchema);
