@@ -51,7 +51,7 @@ router.post('/signup', async (req, res) => {
     res.status(400).send({ result: false, answer: 'Invalid email' });
     return;
   }
-  if (!checkPassword(req.body.password)) {
+  if (!passwordRegex(req.body.password)) {
     return res.status(400).json({ 
       result: false, 
       answer: "Le mot de passe doit contenir au moins 8 caractères, 1 majuscule, 1 minuscule, 1 chiffre et 1 caractère spécial." 
