@@ -70,7 +70,7 @@ router.post('/signup', async (req, res) => {
     password: passwordHash,
     email: req.body.email,
     token: token,
-    friendCode: generatedCode
+    friendCode: generatedCode,
   });
   await newUser.save();
   res.status(201).send({ result: true, answer: { username: newUser.username, email: newUser.email, token: newUser.token, movies: newUser.movies, friendCode: newUser.friendCode || [] } });
@@ -99,39 +99,50 @@ router.post('/signin', async (req, res) => {
     } else {
 
       async function getLocalMovies(userData) {
-        //  4.1 Fonction qui prends les movieid de l'utilisateur, puis va sortir les résultats bien formatés
+        // 4.1 Fonction qui prend les movieid de l'utilisateur, puis va sortir les résultats bien formatés
         if (userData.movies) {
           console.log(userData.movies.reviews)
           const myResults = await Promise.all(userData.movies.map(async movie => {
-            /* let myMovies = {id: movie.movieid.tmdb_id} */
-
             return await getMovieTreated(movie)
           }))
-
           return myResults;
         }
       }
+      
       // 4.2 On prépare les données depuis userExists et on lance la fonction de formattage
       const userData = await userExists.populate({ path: 'movies.movieid', model: Movie });
       const userMovies = await getLocalMovies(userData);
+      
       // 4.3 On va préparer les amis
       async function getLocalFriends(userData) {
-
         if (userData.friends) {
-
           const myResults = await Promise.all(userData.friends.map(async friend => {
-            /* let myMovies = {id: movie.movieid.tmdb_id} */
-            const friendData = await User.findOne({ _id: friend.userid }, { username: 1 });
+            // 🚀 MODIFICATION ICI : On demande explicitement "avatar: 1" pour récupérer les têtes des amis !
+            const friendData = await User.findOne({ _id: friend.userid }, { username: 1, avatar: 1 });
             return await friendData
           }))
           return await myResults;
         }
       }
-      // 4.2 On prépare les données depuis userExists et on lance la fonction de formattage
 
       const userFriends = await getLocalFriends(userData);
+      
       // 5. Sortie pour le reducer
-      res.status(200).send({ result: true, answer: { _id: userExists._id, username: userExists.username, email: userExists.email, token: userExists.token, movies: userMovies, friends: userFriends, friendCode: userExists.friendCode, notifications: userExists.notifications } })
+      res.status(200).send({ 
+        result: true, 
+        answer: { 
+          _id: userExists._id, 
+          username: userExists.username, 
+          email: userExists.email, 
+          token: userExists.token, 
+          movies: userMovies, 
+          friends: userFriends, 
+          friendCode: userExists.friendCode, 
+          notifications: userExists.notifications,
+          
+          avatar: userExists.avatar || 'default' 
+        } 
+      });
     };
 
   } catch (error) {
@@ -497,7 +508,7 @@ router.post('/add-loan', async (req, res) => {
 // ROUTE : Mettre à jour le profil
 router.put('/update-profile', async (req, res) => {
   try {
-    const { token, newUsername, newEmail, newPassword } = req.body;
+    const { token, newUsername, newEmail, newPassword, newAvatar } = req.body;
 
     if (!token) {
       return res.json({ result: false, error: 'Token manquant' });
@@ -515,6 +526,9 @@ router.put('/update-profile', async (req, res) => {
     if (newPassword) {
       const hash = bcrypt.hashSync(newPassword, 10);
       updates.password = hash;
+    }
+    if (newAvatar) {
+      updates.avatar = newAvatar; 
     }
 
     await User.updateOne({ token: token }, { $set: updates });
@@ -577,7 +591,11 @@ router.post('/my-social-data', async (req, res) => {
   try {
     const { token } = req.body;
 
-    const user = await User.findOne({ token: token }).populate('friends.userid', 'username friendCode').populate('pendingRequests', 'username');
+    // 🚀 CORRECTION : On ajoute "avatar" dans les deux populate !
+    const user = await User.findOne({ token: token })
+      .populate('friends.userid', 'username friendCode avatar')
+      .populate('pendingRequests', 'username avatar');
+      
     if (!user) return res.json({ result: false, error: 'Utilisateur introuvable' });
 
     res.json({
@@ -1282,33 +1300,74 @@ router.post('/add-review', async (req, res) => {
   }
 });
 
+
 // ROUTE : Liker ou Unliker un avis
 router.post('/like-review', async (req, res) => {
   try {
-    const { token, tmdb_id, reviewId } = req.body;
+    const { token, tmdb_id, reviewId, ownerId } = req.body;
 
     const me = await User.findOne({ token: token });
     if (!me) return res.json({ result: false, error: 'Utilisateur introuvable' });
 
-    const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id');
+    const myMovieDB = await Movie.findOne({ tmdb_id: tmdb_id }).select('_id title_fr original_title tmdb_id');
     if (!myMovieDB) return res.json({ result: false, error: 'Film inconnu' });
 
-    const movieIndex = me.movies.findIndex(m => m.movieid.toString() === myMovieDB._id.toString());
-    if (movieIndex === -1) return res.json({ result: false, error: 'Action interdite : Ce film n\'est pas dans votre collection' });
+    // 1. Définir chez qui on va chercher l'avis (le propriétaire de la collection)
+    const targetUserId = ownerId || me._id;
+    const targetUser = await User.findOne({
+      _id: targetUserId,
+      "movies.movieid": myMovieDB._id,
+      "movies.reviews._id": reviewId
+    });
 
-    const reviewIndex = me.movies[movieIndex].reviews.findIndex(r => r._id.toString() === reviewId);
-    if (reviewIndex === -1) return res.json({ result: false, error: 'Avis introuvable' });
+    if (!targetUser) return res.json({ result: false, error: 'Avis introuvable dans cette collection' });
 
-    const review = me.movies[movieIndex].reviews[reviewIndex];
+    // 2. Cibler l'avis pour vérifier s'il est déjà liké
+    const movieData = targetUser.movies.find(m => m.movieid.toString() === myMovieDB._id.toString());
+    const reviewData = movieData.reviews.find(r => r._id.toString() === reviewId);
 
-    const alreadyLiked = review.likes.some(id => id.toString() === me._id.toString());
+    const alreadyLiked = reviewData.likes.some(id => id.toString() === me._id.toString());
+
+    // 3. Préparer la modification ($push ou $pull)
+    let updateQuery = {};
     if (alreadyLiked) {
-      review.likes = review.likes.filter(id => id.toString() !== me._id.toString());
+      updateQuery = { $pull: { "movies.$[movie].reviews.$[review].likes": me._id } };
     } else {
-      review.likes.push(me._id);
+      updateQuery = { $push: { "movies.$[movie].reviews.$[review].likes": me._id } };
     }
 
-    await me.save();
+    // 4. Mettre à jour avec arrayFilters (ultra précis)
+    await User.updateOne(
+      { _id: targetUser._id },
+      updateQuery,
+      {
+        arrayFilters: [
+          { "movie.movieid": myMovieDB._id },
+          { "review._id": reviewId }
+        ]
+      }
+    );
+
+    // 🌟 5. GESTION DE LA NOTIFICATION (Seulement pour un nouveau like)
+    if (!alreadyLiked && reviewData.userid.toString() !== me._id.toString()) {
+      const author = await User.findById(reviewData.userid);
+      if (author) {
+        author.notifications.push({
+          type: 'review_liked',
+          senderId: me._id,
+          movieId: myMovieDB._id
+        });
+        await author.save();
+
+        const movieTitle = myMovieDB.title_fr || myMovieDB.original_title || 'ce film';
+        await sendPushNotification(
+          author,
+          "❤️ Avis apprécié",
+          `${me.username} a aimé votre avis sur ${movieTitle}.`,
+          { type: 'review', tmdb_id: myMovieDB.tmdb_id }
+        );
+      }
+    }
 
     res.json({ result: true, message: 'Like mis à jour !' });
 

@@ -89,11 +89,13 @@ async function getMovieTreated(moviedata, poster_type) {
     if (getMyMovieOffline) {
         if (moviedata.reviews?.length > 0) {
             for (let i = 0; i < moviedata.reviews.length; i++) {
-                const getUsername = await User.findOne({ _id: moviedata.reviews[i].userid }).select('username _id');
+                // 🚀 AJOUT DE L'AVATAR ICI POUR LA REVIEW PRINCIPALE
+                const getUsername = await User.findOne({ _id: moviedata.reviews[i].userid }).select('username avatar _id');
                 moviedata.reviews[i].userid = getUsername
                 if (moviedata.reviews[i].replies.length > 0) {
                     for (let j = 0; j < moviedata.reviews[i].replies.length; j++) {
-                    const getUsername = await User.findOne({ _id: moviedata.reviews[i].replies[j].userid }).select('username _id');
+                    // 🚀 AJOUT DE L'AVATAR ICI POUR LES RÉPONSES
+                    const getUsername = await User.findOne({ _id: moviedata.reviews[i].replies[j].userid }).select('username avatar _id');
                     moviedata.reviews[i].replies[j].userid = getUsername
                     }
                 }
